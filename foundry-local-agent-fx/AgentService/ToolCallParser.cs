@@ -10,36 +10,47 @@ namespace AgentService;
 public static partial class ToolCallParser
 {
     /// <summary>
-    /// Extracts a tool call from the model's response content.
+    /// Extracts all tool calls from the model's response content.
+    /// Supports multiple tool calls in a single response.
     /// </summary>
-    public static ToolCall? Parse(string? content)
+    public static List<ToolCall> Parse(string? content)
     {
+        var results = new List<ToolCall>();
+        
         if (string.IsNullOrWhiteSpace(content))
-            return null;
+            return results;
 
         // Try multiple patterns for flexibility
         
-        // Pattern 1: Standard format {"name": "...", "arguments": {...}}
-        var match = ToolCallRegex().Match(content);
-        if (match.Success)
+        // Pattern 1: Find all standard format {"name": "...", "arguments": {...}}
+        var matches = ToolCallRegex().Matches(content);
+        foreach (Match match in matches)
         {
-            return ParseMatch(match);
+            var toolCall = ParseMatch(match);
+            if (toolCall is not null)
+                results.Add(toolCall);
         }
+        
+        if (results.Count > 0)
+            return results;
 
-        // Pattern 2: Try to find any JSON object with "name" field
-        var jsonMatch = JsonObjectRegex().Match(content);
-        if (jsonMatch.Success)
+        // Pattern 2: Try to find all JSON objects with "name" field
+        var jsonMatches = JsonObjectRegex().Matches(content);
+        foreach (Match jsonMatch in jsonMatches)
         {
             try
             {
                 var parsed = JsonSerializer.Deserialize<ToolCall>(jsonMatch.Value, JsonOptions);
                 if (parsed?.Name is not null)
-                    return parsed;
+                    results.Add(parsed);
             }
             catch { }
         }
+        
+        if (results.Count > 0)
+            return results;
 
-        // Pattern 3: Try parsing entire content as JSON
+        // Pattern 3: Try parsing entire content as JSON (single tool call)
         try
         {
             var trimmed = content.Trim();
@@ -47,12 +58,12 @@ public static partial class ToolCallParser
             {
                 var parsed = JsonSerializer.Deserialize<ToolCall>(trimmed, JsonOptions);
                 if (parsed?.Name is not null)
-                    return parsed;
+                    results.Add(parsed);
             }
         }
         catch { }
 
-        return null;
+        return results;
     }
 
     private static ToolCall? ParseMatch(Match match)

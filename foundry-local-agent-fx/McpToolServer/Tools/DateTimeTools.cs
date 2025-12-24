@@ -22,7 +22,7 @@ public static class DateTimeTools
         ["Singapore"] = "Singapore Standard Time",
         ["Hong Kong"] = "China Standard Time",
         ["Dubai"] = "Arabian Standard Time",
-        ["Mumbai"] = "India Standard Time"
+        ["Mumbai"] = "India Standard Time",
     };
 
     /// <summary>

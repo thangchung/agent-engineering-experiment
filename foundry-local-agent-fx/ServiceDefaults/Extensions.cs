@@ -33,6 +33,9 @@ public static class Extensions
             logging.IncludeScopes = true;
         });
 
+        // enable AI telemetry
+        AppContext.SetSwitch("OpenAI.Experimental.EnableOpenTelemetry", true);
+
         builder.Services.AddOpenTelemetry()
             .WithMetrics(metrics =>
             {
@@ -43,6 +46,9 @@ public static class Extensions
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
+                    .AddSource("OpenAI.ChatClient")
+                    .AddSource("Experimental.ModelContextProtocol")
+                    .AddSource("AgentService.GenAI")  // GenAI tracing
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
             });

@@ -56,3 +56,11 @@ response.content = '{"name": "...", "arguments": {...}}'
 
 The `ToolCallParser` handles this by extracting JSON from the content string.
 
+Example:
+
+```json
+<tool_call>
+{"name": "get_datetime", "arguments": {"timezone": "New York"}}
+</tool_call>
+```
+
