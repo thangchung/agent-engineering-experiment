@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Aspire 13.1 packages -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.11.1" />
+    <!-- AI packages -->
+    <PackageVersion Include="OpenAI" Version="2.3.0" />
+    <PackageVersion Include="Microsoft.AI.Foundry.Local" Version="0.1.0" />
+    <!-- MCP SDK packages -->
+    <PackageVersion Include="ModelContextProtocol" Version="0.5.0-preview.1" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.5.0-preview.1" />
+    <!-- API Documentation -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.3.0" />
+  </ItemGroup>
+</Project>

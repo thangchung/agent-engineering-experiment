@@ -1,0 +1,14 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.1.0">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAspireHost>true</IsAspireHost>
+    <UserSecretsId>foundry-local-agent-fx-apphost</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentService\AgentService.csproj" />
+    <ProjectReference Include="..\McpToolServer\McpToolServer.csproj" />
+  </ItemGroup>
+
+</Project>
