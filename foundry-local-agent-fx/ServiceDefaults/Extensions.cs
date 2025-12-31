@@ -11,6 +11,16 @@ namespace Microsoft.Extensions.Hosting;
 
 public static class Extensions
 {
+    /// <summary>
+    /// Ollama agent OpenTelemetry source name.
+    /// </summary>
+    public const string OllamaOtelSource = "AgentService.Ollama";
+    
+    /// <summary>
+    /// Foundry Local agent OpenTelemetry source name.
+    /// </summary>
+    public const string FoundryLocalOtelSource = "AgentService.FoundryLocal";
+
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.ConfigureOpenTelemetry();
@@ -41,14 +51,25 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    // GenAI Semantic Conventions metrics (from OpenTelemetryChatClient)
+                    // - gen_ai.client.operation.duration (histogram, seconds)
+                    // - gen_ai.client.token.usage (histogram, tokens)
+                    .AddMeter(OllamaOtelSource)
+                    .AddMeter(FoundryLocalOtelSource)
+                    .AddMeter("Microsoft.Extensions.AI");  // Default MEAI metrics
             })
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
                     .AddSource("OpenAI.ChatClient")
                     .AddSource("Experimental.ModelContextProtocol")
-                    .AddSource("AgentService.GenAI")  // GenAI tracing
+                    // GenAI Semantic Conventions traces (from OpenTelemetryChatClient)
+                    // - Span: "chat {model}" with gen_ai.* attributes
+                    // - Span: "execute_tool {tool.name}" for tool calls
+                    .AddSource(OllamaOtelSource)
+                    .AddSource(FoundryLocalOtelSource)
+                    .AddSource("Microsoft.Extensions.AI")  // Default MEAI traces
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
             });

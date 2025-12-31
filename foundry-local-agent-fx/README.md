@@ -1,11 +1,16 @@
-# Foundry Local Agent with Aspire
+# Foundry Local & Ollama Agents with Aspire
 
-A .NET 10 + Aspire 13 project demonstrating tool calling with Foundry Local using the `qwen2.5-14b` model.
+A .NET 10 + Aspire 13 project demonstrating tool calling with Foundry Local & Ollama providers.
 
 ## Key Features
 
-- **Manual Tool Call Parsing**: Foundry Local/Qwen returns function calls as JSON in `content` field, not standard `tool_calls`. This project handles that.
-- **Aspire Orchestration**: Full Aspire 13 setup with dashboard and health checks
+- **Locally deployed AI model runner**:
+   - [**Foundry Local**](https://github.com/microsoft/Foundry-Local): Manual Tool Call Parsing when LLM models (Qwen, Phi family...) return function calls as JSON in `content` field, not standard `tool_calls`.
+   - [**Ollama**](https://github.com/ollama/ollama): Native tool call
+- **Aspire Orchestration**: Full Aspire 13 setup with dashboard and health checks with [Semantic conventions for generative AI systems](https://opentelemetry.io/docs/specs/semconv/gen-ai/) support.
+- **Anthropic Skills**:
+   - [context-engineering](https://github.com/mrgoonie/claudekit-skills/tree/main/.claude/skills/context-engineering)
+   - [software-architecture](https://github.com/NeoLabHQ/context-engineering-kit/tree/master/plugins/ddd/skills/software-architecture)
 
 ## Prerequisites
 

@@ -11,6 +11,7 @@
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="OllamaSharp" />
     <PackageReference Include="OpenAI" />
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>

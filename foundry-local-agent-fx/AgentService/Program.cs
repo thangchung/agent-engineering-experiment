@@ -1,4 +1,6 @@
 using AgentService;
+using AgentService.Providers;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using Scalar.AspNetCore;
@@ -19,24 +21,43 @@ app.MapDefaultEndpoints();
 app.MapOpenApi();
 app.MapScalarApiReference(options =>
 {
-    options.WithTitle("Foundry Local Agent API")
+    options.WithTitle("Multi-Provider Agent API")
            .WithTheme(ScalarTheme.DeepSpace);
 });
 
+// =============================================================================
 // Configuration
+// =============================================================================
+var agentProvider = app.Configuration["AGENT_PROVIDER"] ?? "Ollama";
 var foundryEndpoint = app.Configuration["FOUNDRY_ENDPOINT"] ?? "http://127.0.0.1:55930/v1";
 var foundryModel = app.Configuration["FOUNDRY_MODEL"] ?? "qwen2.5-14b-instruct-generic-cpu:4";
+var ollamaEndpoint = app.Configuration["OLLAMA_ENDPOINT"] ?? "http://localhost:11434/";
+var ollamaModel = app.Configuration["OLLAMA_MODEL"] ?? "llama3.2:3b";
 var mcpToolsUrl = app.Configuration["MCP_TOOLS"] ?? "http://localhost:5001";
+var instructions = app.Configuration["Agent:Instructions"] 
+    ?? "You are a helpful assistant with access to tools for weather and other information.";
 
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 var httpClientFactory = app.Services.GetRequiredService<IHttpClientFactory>();
 
-// Initialize MCP tools once at startup
+// Parse provider type
+var providerType = AgentProviderFactory.ParseProviderType(agentProvider);
+logger.LogInformation("Using agent provider: {Provider}", providerType);
+
+// Initialize MCP client and tools - keep client alive for app lifetime
+// McpClientTool holds reference to session, so we must not dispose until shutdown
+McpClient? mcpClient = null;
 IList<McpClientTool> mcpTools = [];
 try
 {
-    using var httpClient = httpClientFactory.CreateClient();
-    mcpTools = await GetMcpToolsAsync(mcpToolsUrl, httpClient);
+    var transport = new HttpClientTransport(new HttpClientTransportOptions
+    {
+        Endpoint = new Uri($"{mcpToolsUrl}/mcp")
+    }, httpClientFactory.CreateClient(), ownsHttpClient: false);
+    
+    mcpClient = await McpClient.CreateAsync(transport);
+    mcpTools = await mcpClient.ListToolsAsync();
+    
     logger.LogInformation("Loaded {Count} MCP tools: {Tools}", 
         mcpTools.Count, 
         string.Join(", ", mcpTools.Select(t => t.Name)));
@@ -46,20 +67,60 @@ catch (Exception ex)
     logger.LogWarning(ex, "Failed to load MCP tools at startup. Chat will work without tools.");
 }
 
-// Create the FoundryLocalAgent
-var agent = app.Services.CreateFoundryLocalAgent(
-    foundryEndpoint: foundryEndpoint,
-    model: foundryModel,
-    mcpToolsUrl: $"{mcpToolsUrl}/mcp",
+// Register MCP client disposal on app shutdown
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    if (mcpClient is not null)
+    {
+        logger.LogInformation("Disposing MCP client...");
+        mcpClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+});
+
+// =============================================================================
+// Create the Agent using Factory
+// =============================================================================
+var providerConfig = providerType switch
+{
+    AgentProviderType.Ollama => new AgentProviderConfig(ollamaEndpoint, ollamaModel, $"{mcpToolsUrl}/mcp"),
+    AgentProviderType.FoundryLocal => new AgentProviderConfig(foundryEndpoint, foundryModel, $"{mcpToolsUrl}/mcp"),
+    _ => new AgentProviderConfig(foundryEndpoint, foundryModel, $"{mcpToolsUrl}/mcp")
+};
+
+var agent = AgentProviderFactory.Create(
+    services: app.Services,
+    providerType: providerType,
+    config: providerConfig,
     mcpTools: mcpTools,
-    instructions: "You are a helpful assistant with access to tools for weather and other information.",
-    name: "FoundryLocalAgent",
-    description: "AI Agent powered by Foundry Local with MCP tools");
+    instructions: instructions,
+    name: $"{providerType}Agent",
+    description: $"AI Agent powered by {providerType} with MCP tools");
+
+logger.LogInformation("Agent created: {Name} using {Provider} at {Endpoint}", 
+    agent.Name, providerType, providerConfig.Endpoint);
 
 // Store threads in memory (in production, use a proper store)
-var threads = new Dictionary<string, FoundryLocalAgentThread>();
+var threads = new Dictionary<string, AgentThread>();
+var threadIds = new Dictionary<AgentThread, string>();
 
-// Chat endpoint using FoundryLocalAgent
+// Helper to get thread ID from AgentThread
+string GetThreadId(AgentThread thread)
+{
+    if (threadIds.TryGetValue(thread, out var existingId))
+        return existingId;
+    
+    // For custom thread types, extract ID if available
+    var id = thread switch
+    {
+        FoundryLocalAgentThread foundry => foundry.ThreadId,
+        _ => Guid.NewGuid().ToString("N")
+    };
+    
+    threadIds[thread] = id;
+    return id;
+}
+
+// Chat endpoint using Agent
 app.MapPost("/chat", async (ChatRequest request) =>
 {
     try
@@ -67,17 +128,21 @@ app.MapPost("/chat", async (ChatRequest request) =>
         logger.LogInformation("Processing chat: '{Message}'", request.Message);
         
         // Get or create thread
-        FoundryLocalAgentThread agentThread;
+        AgentThread agentThread;
+        string threadId;
+        
         if (!string.IsNullOrEmpty(request.ThreadId) && threads.TryGetValue(request.ThreadId, out var existingThread))
         {
             agentThread = existingThread;
-            logger.LogDebug("Using existing thread: {ThreadId}", request.ThreadId);
+            threadId = request.ThreadId;
+            logger.LogDebug("Using existing thread: {ThreadId}", threadId);
         }
         else
         {
-            agentThread = (FoundryLocalAgentThread)agent.GetNewThread();
-            threads[agentThread.ThreadId] = agentThread;
-            logger.LogDebug("Created new thread: {ThreadId}", agentThread.ThreadId);
+            agentThread = agent.GetNewThread();
+            threadId = GetThreadId(agentThread);
+            threads[threadId] = agentThread;
+            logger.LogDebug("Created new thread: {ThreadId}", threadId);
         }
         
         // Run the agent
@@ -87,7 +152,7 @@ app.MapPost("/chat", async (ChatRequest request) =>
         // Get the assistant's response
         var responseText = response.Messages.LastOrDefault()?.Text ?? "No response generated.";
         
-        return Results.Ok(new ChatResponse(responseText, agentThread.ThreadId));
+        return Results.Ok(new ChatResponse(responseText, threadId));
     }
     catch (Exception ex)
     {
@@ -101,8 +166,9 @@ app.MapGet("/interactive", async (HttpContext context) =>
 {
     context.Response.ContentType = "text/plain";
     await context.Response.WriteAsync("Use POST /chat endpoint with JSON body: {\"message\": \"your question\", \"threadId\": \"optional-thread-id\"}\n");
-    await context.Response.WriteAsync($"Foundry Endpoint: {foundryEndpoint}\n");
-    await context.Response.WriteAsync($"Model: {foundryModel}\n");
+    await context.Response.WriteAsync($"Provider: {providerType}\n");
+    await context.Response.WriteAsync($"Endpoint: {providerConfig.Endpoint}\n");
+    await context.Response.WriteAsync($"Model: {providerConfig.Model}\n");
     await context.Response.WriteAsync($"MCP Tools Server: {mcpToolsUrl}\n");
     await context.Response.WriteAsync($"Agent: {agent.Name}\n");
     await context.Response.WriteAsync($"Active threads: {threads.Count}\n");
@@ -121,20 +187,6 @@ app.MapDelete("/threads/{threadId}", (string threadId) =>
 });
 
 app.Run();
-
-// ==================== Helper Functions ====================
-
-// Get tools from MCP server
-static async Task<IList<McpClientTool>> GetMcpToolsAsync(string mcpToolsUrl, HttpClient httpClient)
-{
-    var transport = new HttpClientTransport(new HttpClientTransportOptions
-    {
-        Endpoint = new Uri($"{mcpToolsUrl}/mcp")
-    }, httpClient, ownsHttpClient: false);
-    
-    await using var client = await McpClient.CreateAsync(transport);
-    return await client.ListToolsAsync();
-}
 
 // Request/Response models
 record ChatRequest(string Message, string? ThreadId = null);
