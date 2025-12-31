@@ -1,9 +1,9 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Foundry Local configuration
-var foundryEndpoint = builder.AddParameter("foundry-endpoint", "http://127.0.0.1:55930/v1");
+var foundryEndpoint = builder.AddParameter("foundry-endpoint", "http://127.0.0.1:57591/v1");
 // http://127.0.0.1:55930/v1/models
-var foundryModel = builder.AddParameter("foundry-model", "Phi-4-mini-instruct-cuda-gpu:5");
+var foundryModel = builder.AddParameter("foundry-model", "qwen2.5-14b-instruct-generic-cpu:4");
 
 // MCP Tool Server
 var mcpToolServer = builder.AddProject<Projects.McpToolServer>("mcp-tools")
