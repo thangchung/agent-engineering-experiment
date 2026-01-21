@@ -1,0 +1,22 @@
+services:
+  comfyui:
+    build:
+      context: .
+      dockerfile: docker/qwenvl.dockerfile
+    volumes:
+      - ./cache:/root/.cache/comfyui-api
+      - ./output:/opt/ComfyUI/output
+      - ./input:/opt/ComfyUI/input
+      - ./models:/opt/ComfyUI/models
+    ports:
+      - "3000:3000"
+      - "8188:8188"
+    environment:
+      LOG_LEVEL: "debug"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ gpu ]
+              count: all

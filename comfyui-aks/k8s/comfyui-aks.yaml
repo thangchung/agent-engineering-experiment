@@ -1,0 +1,261 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: comfyui
+---
+# ConfigMap containing the manifest.yml for model downloads
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: comfyui-manifest
+  namespace: comfyui
+data:
+  manifest.yml: |
+    custom_nodes:
+      - comfyui_essentials
+    models:
+      before_start:
+        - url: https://civitai.com/api/download/models/128713?type=Model&format=SafeTensor&size=pruned&fp=fp16
+          local_path: models/checkpoints/dreamshaper_8.safetensors
+        - url: https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_5_beta2_noVae_half_pruned.safetensors?download=true
+          local_path: models/checkpoints/dreamshaper5.safetensors
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: comfyui-cache-pvc
+  namespace: comfyui
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 50Gi
+---
+# PVC for models - large storage for checkpoints
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: comfyui-models-pvc
+  namespace: comfyui
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: comfyui-output-pvc
+  namespace: comfyui
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: comfyui-input-pvc
+  namespace: comfyui
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comfyui-api
+  namespace: comfyui
+  labels:
+    app: comfyui-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: comfyui-api
+  template:
+    metadata:
+      labels:
+        app: comfyui-api
+    spec:
+      # Init container to create model subdirectories in the PVC
+      initContainers:
+        - name: init-model-dirs
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /models/checkpoints \
+                       /models/loras \
+                       /models/vae \
+                       /models/clip \
+                       /models/unet \
+                       /models/controlnet \
+                       /models/embeddings \
+                       /models/upscale_models
+              echo "Created model directories"
+              ls -la /models
+          volumeMounts:
+            - name: models-volume
+              mountPath: /models
+      containers:
+        - name: comfyui-api
+          # GitHub Container Registry image
+          image: ghcr.io/thangchung/agent-engineering-experiment/comfyui-api:qwenvl-latest
+          imagePullPolicy: Always
+          ports:
+            - name: api
+              containerPort: 3000
+              protocol: TCP
+            - name: comfyui
+              containerPort: 8188
+              protocol: TCP
+          env:
+            - name: LOG_LEVEL
+              value: "debug"
+            - name: WORKFLOW_DIR
+              value: "/workflows"
+            - name: STARTUP_CHECK_MAX_TRIES
+              value: "60"
+            # Path to manifest.yml for model downloads
+            - name: MANIFEST
+              value: "/app/manifest.yml"
+            # Uncomment and set if using HuggingFace models
+            # - name: HF_TOKEN
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: comfyui-secrets
+            #       key: hf-token
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: "16Gi"
+              cpu: "4"
+            requests:
+              nvidia.com/gpu: 1
+              memory: "8Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: cache-volume
+              mountPath: /root/.cache/comfyui-api
+            - name: models-volume
+              mountPath: /opt/ComfyUI/models
+            - name: output-volume
+              mountPath: /opt/ComfyUI/output
+            - name: input-volume
+              mountPath: /opt/ComfyUI/input
+            - name: manifest-volume
+              mountPath: /app/manifest.yml
+              subPath: manifest.yml
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          # Startup probe for model download time
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30  # 30 * 10s = 5 minutes for model downloads
+      volumes:
+        - name: cache-volume
+          persistentVolumeClaim:
+            claimName: comfyui-cache-pvc
+        - name: models-volume
+          persistentVolumeClaim:
+            claimName: comfyui-models-pvc
+        - name: output-volume
+          persistentVolumeClaim:
+            claimName: comfyui-output-pvc
+        - name: input-volume
+          persistentVolumeClaim:
+            claimName: comfyui-input-pvc
+        - name: manifest-volume
+          configMap:
+            name: comfyui-manifest
+      # GPU node pool tolerations (matches samples-tf-mnist-demo.yaml)
+      tolerations:
+        - key: "sku"
+          operator: "Equal"
+          value: "gpu"
+          effect: "NoSchedule"
+      # Schedule on GPU nodes
+      nodeSelector:
+        accelerator: nvidia
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: comfyui-api-service
+  namespace: comfyui
+  labels:
+    app: comfyui-api
+spec:
+  type: LoadBalancer
+  ports:
+    - name: api
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+    - name: comfyui
+      port: 8188
+      targetPort: 8188
+      protocol: TCP
+  selector:
+    app: comfyui-api
+---
+# Optional: ClusterIP service for internal access only
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: comfyui-api-internal
+#   namespace: comfyui
+#   labels:
+#     app: comfyui-api
+# spec:
+#   type: ClusterIP
+#   ports:
+#     - name: api
+#       port: 3000
+#       targetPort: 3000
+#   selector:
+#     app: comfyui-api
+---
+# Optional: Secret for HuggingFace token
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: comfyui-secrets
+#   namespace: comfyui
+# type: Opaque
+# stringData:
+#   hf-token: "your-huggingface-token-here"

@@ -1,0 +1,119 @@
+# ComfyUI API with KEDA HTTP Add-on for scale-to-zero
+#
+# Prerequisites:
+#   1. Install KEDA: helm install keda kedacore/keda --namespace keda --create-namespace
+#   2. Install KEDA HTTP Add-on: helm install http-add-on kedacore/keda-add-ons-http --namespace keda
+#   3. Configure GPU node pool with min=0: az aks nodepool update --enable-cluster-autoscaler --min-count 0 --max-count 3
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: comfyui
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comfyui-api
+  namespace: comfyui
+  labels:
+    app: comfyui-api
+spec:
+  replicas: 0  # KEDA controls replicas
+  selector:
+    matchLabels:
+      app: comfyui-api
+  template:
+    metadata:
+      labels:
+        app: comfyui-api
+    spec:
+      containers:
+        - name: comfyui-api
+          # GitHub Container Registry image (includes download-models.sh entrypoint)
+          image: ghcr.io/thangchung/agent-engineering-experiment/comfyui-api:qwenvl-1
+          imagePullPolicy: Always
+          ports:
+            - name: api
+              containerPort: 3000
+              protocol: TCP
+            - name: comfyui
+              containerPort: 8188
+              protocol: TCP
+          env:
+            - name: LOG_LEVEL
+              value: "debug"
+            - name: WORKFLOW_DIR
+              value: "/workflows"
+            - name: STARTUP_CHECK_MAX_TRIES
+              value: "30"
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: "16Gi"
+              cpu: "4"
+            requests:
+              nvidia.com/gpu: 1
+              memory: "8Gi"
+              cpu: "2"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      # GPU node pool tolerations
+      tolerations:
+        - key: "sku"
+          operator: "Equal"
+          value: "gpu"
+          effect: "NoSchedule"
+      # Schedule on GPU nodes
+      nodeSelector:
+        accelerator: nvidia
+      restartPolicy: Always
+---
+# Internal service for KEDA HTTP Add-on to route traffic to
+apiVersion: v1
+kind: Service
+metadata:
+  name: comfyui-api-service
+  namespace: comfyui
+  labels:
+    app: comfyui-api
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+    - name: comfyui
+      port: 8188
+      targetPort: 8188
+      protocol: TCP
+  selector:
+    app: comfyui-api
+---
+# KEDA HTTP Add-on - scales based on incoming HTTP requests
+# Traffic flows: Client -> KEDA Interceptor -> comfyui-api-service -> Pod
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: comfyui-api-scaler
+  namespace: comfyui
+spec:
+  hosts:
+    - comfyui.local  # Use this hostname in requests (Host header)
+  targetPendingRequests: 1   # Scale up on any pending request
+  scaledownPeriod: 300       # 5 minutes idle before scale to zero
+  scaleTargetRef:
+    name: comfyui-api
+    kind: Deployment
+    apiVersion: apps/v1
+    service: comfyui-api-service
+    port: 3000
+  replicas:
+    min: 0   # Scale to ZERO when idle
+    max: 2   # Maximum replicas

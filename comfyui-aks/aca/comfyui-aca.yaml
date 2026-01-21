@@ -1,0 +1,96 @@
+# Azure Container Apps Deployment for ComfyUI-API
+# Uses Serverless T4 GPU with scale-to-zero capability
+#
+# Prerequisites:
+#   1. Request GPU quota via support ticket: https://learn.microsoft.com/en-us/azure/container-apps/quota-requests
+#   2. Create resource group: az group create -n comfyui-rg -l eastus
+#
+# Deploy steps:
+#   1. Create environment with GPU workload profile
+#   2. Deploy container app with T4 GPU
+#
+# ============================================
+# STEP 1: Create Environment (run once)
+# ============================================
+#
+# az containerapp env create \
+#   --name comfyui-env \
+#   --resource-group comfyui-rg \
+#   --location eastus \
+#   --enable-workload-profiles
+#
+# az containerapp env workload-profile add \
+#   --name comfyui-env \
+#   --resource-group comfyui-rg \
+#   --workload-profile-name gpu-t4 \
+#   --workload-profile-type Consumption-GPU-NC8as-T4
+#
+# ============================================
+# STEP 2: Deploy Container App (use YAML below)
+# ============================================
+#
+# az containerapp create \
+#   --name comfyui-api \
+#   --resource-group comfyui-rg \
+#   --environment comfyui-env \
+#   --yaml aca/comfyui-aca.yaml
+
+# Container App YAML configuration
+type: Microsoft.App/containerApps
+location: eastus
+properties:
+  environmentId: /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/comfyui-rg/providers/Microsoft.App/managedEnvironments/comfyui-env
+  workloadProfileName: Consumption-GPU-NC8as-T4
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 3000
+      transport: http
+      allowInsecure: false
+    registries: []
+    # Uncomment if using private registry
+    # - server: ghcr.io
+    #   username: <USERNAME>
+    #   passwordSecretRef: ghcr-password
+    # secrets:
+    # - name: ghcr-password
+    #   value: <PAT_TOKEN>
+  template:
+    containers:
+      - name: comfyui-api
+        image: ghcr.io/thangchung/agent-engineering-experiment/comfyui-api:qwenvl-latest
+        env:
+          - name: LOG_LEVEL
+            value: "debug"
+          - name: WORKFLOW_DIR
+            value: "/workflows"
+          - name: STARTUP_CHECK_MAX_TRIES
+            value: "30"
+        resources:
+          cpu: 8
+          memory: 56Gi
+          gpu: 1
+        probes:
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            failureThreshold: 3
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 3
+    scale:
+      minReplicas: 0    # Scale to ZERO when idle
+      maxReplicas: 3
+      rules:
+        - name: http-requests
+          http:
+            metadata:
+              concurrentRequests: "1"  # Scale up on any request

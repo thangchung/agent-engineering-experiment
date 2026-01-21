@@ -1,0 +1,9 @@
+{
+  "id": "7f350df6-49a9-4cd0-88de-5b53df870003",
+  "webhook_v2": "https://webhook.site/b59a7434-c944-4897-91b8-5cd808219094",
+  "input": {
+    "prompt": "Create a photorealistic image of a woman standing outdoors on what appears to be a sunny autumn day. She has shoulder-length red hair and is wearing a Chinese blue Hangfu. The background features blurred trees with fall foliage, indicating the season. The lighting suggests natural sunlight, casting soft shadows that highlight her figure. The scene includes other people in casual attire, suggesting a public or social setting. The camera angle is at eye level, focusing on the woman's upper body and face while slightly capturing the background to provide context. In Ho Chi Minh city",
+    "negative_prompt": "",
+    "checkpoint": "dreamshaper_8.safetensors"
+  }
+}
