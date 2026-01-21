@@ -1,5 +1,7 @@
 # Scale ComfyUI on AKS - experiment
 
+The blog can be found at [Auto-Scaling ComfyUI-API and ComfyUI: Orchestrating GPU Workloads with Azure Kubernetes Service and KEDA](https://dev.to/thangchung/auto-scaling-comfyui-api-and-comfyui-orchestrating-gpu-workloads-with-azure-kubernetes-service-and-2207)
+
 > We use Windows 11 - WSL (Ubuntu 24) for building and deploying this stack
 
 ## Build the `comfyui-api` execution file
@@ -89,8 +91,8 @@ curl -X POST http://localhost:3000/workflow/txt2img \
 ```ps1
 # PowerShell
 curl.exe -X POST http://localhost:3000/workflow/txt2img `
-  -H "Content-Type: application/json" `
-  -H "Host: comfyui.local" `
+  -Header "Content-Type: application/json" `
+  -Header "Host: comfyui.local" `
   -d "@payload.json"
 ```
 
