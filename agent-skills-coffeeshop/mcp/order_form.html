@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coffee Shop Order Form</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-bottom: 8px;
+      font-size: 24px;
+      color: #2c3e50;
+    }
+    .customer-info {
+      margin-bottom: 20px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #555;
+    }
+    .order-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 48px;
+      gap: 8px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+    .order-grid.header {
+      font-weight: 600;
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 8px;
+    }
+    label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #444;
+    }
+    select, input[type="number"] {
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 100%;
+    }
+    select:focus, input[type="number"]:focus:not([readonly]) {
+      outline: none;
+      border-color: #4CAF50;
+      box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+    }
+    input[readonly] {
+      background: #eee;
+      cursor: default;
+      color: #666;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-remove {
+      background: #f44336;
+      color: white;
+      width: 48px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-remove:hover {
+      background: #d32f2f;
+    }
+    .btn-add {
+      background: #2196F3;
+      color: white;
+      margin-top: 12px;
+    }
+    .btn-add:hover {
+      background: #1976D2;
+    }
+    .total-section {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 2px solid #eee;
+      text-align: right;
+    }
+    .total-label {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2c3e50;
+    }
+    .total-amount {
+      font-size: 24px;
+      font-weight: 700;
+      color: #4CAF50;
+      margin-left: 12px;
+    }
+    .btn-submit {
+      background: #4CAF50;
+      color: white;
+      width: 100%;
+      padding: 12px;
+      margin-top: 20px;
+      font-size: 16px;
+    }
+    .btn-submit:hover {
+      background: #45a049;
+    }
+    .btn-submit:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #message {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      display: none;
+    }
+    #message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    #message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1a1a1a;
+        color: #e0e0e0;
+      }
+      .container {
+        background: #2d2d2d;
+      }
+      h1 {
+        color: #e0e0e0;
+      }
+      .customer-info {
+        background: #3a3a3a;
+        color: #b0b0b0;
+      }
+      .order-grid.header {
+        color: #b0b0b0;
+      }
+      label {
+        color: #d0d0d0;
+      }
+      select, input[type="number"] {
+        background: #3a3a3a;
+        border-color: #555;
+        color: #e0e0e0;
+      }
+      input[readonly] {
+        background: #333 !important;
+        color: #888;
+      }
+      .total-section {
+        border-top-color: #444;
+      }
+      .total-label {
+        color: #e0e0e0;
+      }
+    }
+    @media (max-width: 640px) {
+      .order-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 12px;
+        background: #f9f9f9;
+        border-radius: 4px;
+        margin-bottom: 16px;
+      }
+      .order-grid.header {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>☕ Create New Order</h1>
+    <div class="customer-info" id="customerInfo">
+      Loading customer information...
+    </div>
+
+    <form id="orderForm">
+      <div class="order-grid header">
+        <div>Item</div>
+        <div>Price</div>
+        <div>Quantity</div>
+        <div></div>
+      </div>
+      <div id="orderRows"></div>
+      <button type="button" class="btn-add" onclick="addRow()">+ Add Item</button>
+
+      <div class="total-section">
+        <span class="total-label">Total:</span>
+        <span class="total-amount" id="totalAmount">$0.00</span>
+      </div>
+
+      <button type="submit" class="btn-submit">Place Order</button>
+    </form>
+
+    <div id="message"></div>
+    <div id="debugLog" style="display:none;margin-top:20px;padding:12px;background:#1e1e1e;color:#0f0;font-family:monospace;font-size:12px;border-radius:4px;max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+
+  <!-- Non-module script for error catching and logging -->
+  <script>
+    window._log = function(msg) {
+      const ts = new Date().toISOString().slice(11,23);
+      const line = `[${ts}] ${msg}`;
+      console.log(line);
+      const el = document.getElementById('debugLog');
+      if (el) { el.textContent += line + '\n'; el.scrollTop = el.scrollHeight; }
+    };
+    window._logErr = function(msg) {
+      const ts = new Date().toISOString().slice(11,23);
+      const line = `[${ts}] ❌ ${msg}`;
+      console.error(line);
+      const el = document.getElementById('debugLog');
+      if (el) { el.textContent += line + '\n'; el.scrollTop = el.scrollHeight; }
+    };
+    window.onerror = function(msg, src, line, col, err) {
+      _logErr('Global error: ' + msg + ' at ' + src + ':' + line);
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      _logErr('Unhandled rejection: ' + (e.reason?.message || e.reason || 'unknown'));
+    });
+    _log('Page loaded. Waiting for module script...');
+  </script>
+
+  <script type="module">
+    _log('Module script started.');
+
+    let App;
+    try {
+      _log('Importing MCP Apps SDK from unpkg (app-with-deps.js)...');
+      const sdk = await import('https://unpkg.com/@modelcontextprotocol/ext-apps@0.4.0/dist/src/app-with-deps.js');
+      App = sdk.App;
+      _log('SDK imported OK. App class: ' + (typeof App));
+      _log('SDK exports: ' + Object.keys(sdk).join(', '));
+    } catch (e) {
+      _logErr('SDK import failed: ' + e.message);
+      document.getElementById('customerInfo').textContent = 'Error: Failed to load MCP Apps SDK. See debug log below.';
+      throw e;
+    }
+
+    let app;
+    try {
+      app = new App({ name: 'CoffeeShopOrder', version: '1.0.0' });
+      _log('App instance created.');
+    } catch (e) {
+      _logErr('App() constructor failed: ' + e.message);
+      document.getElementById('customerInfo').textContent = 'Error: Failed to initialize MCP App.';
+      throw e;
+    }
+
+    let menuItems = [];
+    let customerId = null;
+    let customerName = '';
+
+    // Connect to host (postMessage channel to VS Code)
+    try {
+      _log('Connecting to host via postMessage...');
+      await app.connect();
+      _log('Connected to host successfully.');
+    } catch (e) {
+      _logErr('app.connect() failed: ' + e.message);
+      document.getElementById('customerInfo').textContent = 'Error: Failed to connect to MCP host. See debug log.';
+      throw e;
+    }
+
+    // Check host context
+    try {
+      const ctx = app.getHostContext();
+      _log('Host context: ' + JSON.stringify(ctx).slice(0, 300));
+    } catch (e) {
+      _log('getHostContext() unavailable: ' + e.message);
+    }
+
+    // Helper: parse text content from a tool result
+    function parseToolResult(result) {
+      if (result.isError) return { ok: false, error: 'Tool returned error: ' + JSON.stringify(result.content) };
+      if (result.content && result.content[0]?.text) {
+        return JSON.parse(result.content[0].text);
+      }
+      return { ok: false, error: 'No text content in result' };
+    }
+
+    // Load customer context
+    _log('Calling get_form_context...');
+    try {
+      const result = await app.callServerTool({ name: 'get_form_context', arguments: {} });
+      _log('get_form_context result: ' + JSON.stringify(result).slice(0, 300));
+      const data = parseToolResult(result);
+      if (data.ok) {
+        customerId = data.customer_id;
+        customerName = data.customer_name || data.customer_id;
+        document.getElementById('customerInfo').textContent =
+          `Customer: ${customerName} (${customerId})`;
+        _log('Customer loaded: ' + customerId + ' / ' + customerName);
+      } else {
+        document.getElementById('customerInfo').textContent =
+          'Error: ' + (data.error || 'Failed to load customer');
+        _logErr('get_form_context: ' + (data.error || 'ok=false'));
+      }
+    } catch (e) {
+      _logErr('get_form_context threw: ' + e.message);
+      document.getElementById('customerInfo').textContent = 'Error loading customer. See debug log.';
+    }
+
+    // Load menu
+    _log('Calling get_menu...');
+    try {
+      const result = await app.callServerTool({ name: 'get_menu', arguments: {} });
+      _log('get_menu result: ' + JSON.stringify(result).slice(0, 300));
+      const data = parseToolResult(result);
+      if (data.ok && data.menu) {
+        menuItems = data.menu;
+        _log('Menu loaded: ' + menuItems.length + ' items');
+        if (document.getElementById('orderRows').children.length === 0) {
+          addRow();
+        }
+      } else {
+        _logErr('get_menu: ' + (data.error || 'no menu'));
+      }
+    } catch (e) {
+      _logErr('get_menu threw: ' + e.message);
+    }
+
+    // Add a new order row
+    window.addRow = function() {
+      _log('addRow() called. menuItems.length=' + menuItems.length);
+      const container = document.getElementById('orderRows');
+      const row = document.createElement('div');
+      row.className = 'order-grid';
+      row.innerHTML = `
+        <select data-field="item_type" onchange="onItemSelect(this)">
+          <option value="">-- Select Item --</option>
+          ${menuItems.map(item =>
+            `<option value="${item.item_type}" data-price="${item.price}">${item.name} - $${item.price.toFixed(2)}</option>`
+          ).join('')}
+        </select>
+        <input type="number" data-field="price" step="0.25" min="0" value="0.00" readonly tabindex="-1" style="background:#eee;cursor:default;" />
+        <input type="number" data-field="qty" step="1" min="1" value="1" onchange="updateTotal()" />
+        <button type="button" class="btn-remove" onclick="removeRow(this)" title="Remove item">×</button>
+      `;
+      container.appendChild(row);
+    };
+
+    // Remove a row
+    window.removeRow = function(btn) {
+      const container = document.getElementById('orderRows');
+      if (container.children.length > 1) {
+        btn.closest('.order-grid').remove();
+        updateTotal();
+      } else {
+        showMessage('At least one item is required', 'error');
+      }
+    };
+
+    // Handle item selection
+    window.onItemSelect = function(select) {
+      const row = select.closest('.order-grid');
+      const priceInput = row.querySelector('[data-field="price"]');
+      const selectedOption = select.options[select.selectedIndex];
+
+      if (selectedOption.value) {
+        const price = parseFloat(selectedOption.dataset.price || 0);
+        priceInput.value = price.toFixed(2);
+        _log('Item selected: ' + selectedOption.value + ' price=' + price);
+      } else {
+        priceInput.value = '0.00';
+      }
+
+      updateTotal();
+    };
+
+    // Update total amount
+    window.updateTotal = function() {
+      const rows = document.querySelectorAll('#orderRows .order-grid');
+      let total = 0;
+
+      rows.forEach(row => {
+        const price = parseFloat(row.querySelector('[data-field="price"]').value) || 0;
+        const qty = parseInt(row.querySelector('[data-field="qty"]').value) || 0;
+        total += price * qty;
+      });
+
+      document.getElementById('totalAmount').textContent = `$${total.toFixed(2)}`;
+    };
+
+    // Show message
+    function showMessage(text, type) {
+      const msgEl = document.getElementById('message');
+      msgEl.textContent = text;
+      msgEl.className = type;
+      msgEl.style.display = 'block';
+      _log('showMessage: [' + type + '] ' + text);
+      setTimeout(() => {
+        msgEl.style.display = 'none';
+      }, 5000);
+    }
+
+    // Handle form submission — send order details back to chat via sendMessage
+    // The agent will call create_order on our behalf and show the summary
+    document.getElementById('orderForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      _log('Form submitted. customerId=' + customerId);
+
+      if (!customerId) {
+        showMessage('No customer loaded. Cannot create order.', 'error');
+        return;
+      }
+
+      const rows = document.querySelectorAll('#orderRows .order-grid');
+      const items = [];
+
+      for (const row of rows) {
+        const itemType = row.querySelector('[data-field="item_type"]').value;
+        const price = parseFloat(row.querySelector('[data-field="price"]').value) || 0;
+        const qty = parseInt(row.querySelector('[data-field="qty"]').value) || 0;
+
+        if (!itemType) {
+          showMessage('Please select an item for all rows', 'error');
+          return;
+        }
+
+        if (qty < 1) {
+          showMessage('Quantity must be at least 1', 'error');
+          return;
+        }
+
+        const menuItem = menuItems.find(m => m.item_type === itemType);
+        items.push({
+          item_type: itemType,
+          name: menuItem ? menuItem.name : itemType,
+          qty: qty,
+          price: price
+        });
+      }
+
+      if (items.length === 0) {
+        showMessage('Please add at least one item', 'error');
+        return;
+      }
+
+      // Build a message for the chat with order details embedded as JSON
+      const total = items.reduce((sum, i) => sum + (i.price * i.qty), 0);
+      const itemLines = items.map(i => `- ${i.qty}x ${i.name} — $${i.price.toFixed(2)} each`).join('\n');
+      const orderJson = JSON.stringify({ customer_id: customerId, order_dto: { items } });
+      const messageText = `I'd like to place this order:\n${itemLines}\nTotal: $${total.toFixed(2)}\n\n[ORDER_DATA]: ${orderJson}`;
+
+      _log('Sending order to chat via sendMessage...');
+      try {
+        await app.sendMessage({
+          role: 'user',
+          content: [{ type: 'text', text: messageText }]
+        });
+        _log('sendMessage succeeded.');
+        showMessage('Order sent! Check the chat for your order summary.', 'success');
+        // Reset form
+        document.getElementById('orderRows').innerHTML = '';
+        addRow();
+        updateTotal();
+      } catch (e) {
+        _logErr('sendMessage threw: ' + e.message);
+        showMessage('Error sending order: ' + e.message, 'error');
+      }
+    });
+
+    _log('Module init complete. Form is ready.');
+  </script>
+</body>
+</html>

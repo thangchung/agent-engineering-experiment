@@ -18,8 +18,10 @@ import os
 import random
 import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastmcp import FastMCP
+from fastmcp.server.apps import AppConfig, ResourceCSP
 
 mcp = FastMCP(
     "Orders",
@@ -99,6 +101,25 @@ _DEFAULT_ORDERS: dict[str, dict] = {
 }
 
 VALID_STATUSES = ["pending", "confirmed", "preparing", "ready", "completed", "cancelled"]
+
+_MENU_ITEMS = [
+    {"item_type": "CAPPUCCINO", "name": "CAPPUCCINO", "category": "Beverages", "price": 4.50},
+    {"item_type": "COFFEE_BLACK", "name": "COFFEE BLACK", "category": "Beverages", "price": 3.00},
+    {"item_type": "COFFEE_WITH_ROOM", "name": "COFFEE WITH ROOM", "category": "Beverages", "price": 3.00},
+    {"item_type": "ESPRESSO", "name": "ESPRESSO", "category": "Beverages", "price": 3.50},
+    {"item_type": "ESPRESSO_DOUBLE", "name": "ESPRESSO DOUBLE", "category": "Beverages", "price": 4.00},
+    {"item_type": "LATTE", "name": "LATTE", "category": "Beverages", "price": 4.50},
+    {"item_type": "CAKEPOP", "name": "CAKEPOP", "category": "Food", "price": 2.50},
+    {"item_type": "CROISSANT", "name": "CROISSANT", "category": "Food", "price": 3.25},
+    {"item_type": "MUFFIN", "name": "MUFFIN", "category": "Food", "price": 3.00},
+    {"item_type": "CROISSANT_CHOCOLATE", "name": "CROISSANT CHOCOLATE", "category": "Food", "price": 3.75},
+    {"item_type": "CHICKEN_MEATBALLS", "name": "CHICKEN MEATBALLS", "category": "Other", "price": 5.00},
+]
+
+ORDER_FORM_URI = "ui://orders/order_form.html"
+
+# Store current customer for the active form session
+_current_form_customer: dict | None = None
 
 _STATE_FILE = os.path.join(tempfile.gettempdir(), "mcp_orders_state.json")
 
@@ -209,6 +230,70 @@ def order_history(customer_id: str) -> dict:
     }
 
 
+@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI))
+def get_menu() -> dict:
+    """Get the coffee shop menu with all available items and prices.
+    
+    This tool is designed for the order form UI to load menu data.
+    Returns all menu items with item_type, name, category, and price.
+    """
+    return {
+        "ok": True,
+        "menu": _MENU_ITEMS,
+        "count": len(_MENU_ITEMS)
+    }
+
+
+@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI))
+def get_form_context() -> dict:
+    """Get the current customer context for the order form.
+    
+    This tool is called by the order form UI to retrieve the customer information
+    for the active form session.
+    """
+    global _current_form_customer
+    if not _current_form_customer:
+        return {
+            "ok": False,
+            "error": "No active form session. Please reopen the order form."
+        }
+    return {
+        "ok": True,
+        "customer_id": _current_form_customer["customer_id"],
+        "customer_name": _current_form_customer["name"],
+        "customer_email": _current_form_customer["email"],
+    }
+
+
+@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI))
+def open_order_form(customer_id: str) -> dict:
+    """Open the interactive order form for a customer.
+
+    This presents the HTML order form UI where the customer can browse the menu,
+    select items from dropdowns, see prices (read-only), adjust quantities,
+    and submit the order directly from the form.
+
+    Call this tool when the customer wants to browse menu items or place an order.
+
+    Args:
+        customer_id: The customer ID (e.g. "C-1001").
+    """
+    global _current_form_customer
+    customer = store.customers.get(customer_id)
+    if not customer:
+        return {"ok": False, "error": f"No customer found with id '{customer_id}'"}
+    
+    # Store customer for form session
+    _current_form_customer = customer
+    
+    return {
+        "ok": True,
+        "message": "Order form opened. The customer can now browse the menu and place an order.",
+        "customer_id": customer_id,
+        "customer_name": customer["name"],
+    }
+
+
 @mcp.tool()
 def create_order(customer_id: str, order_dto: dict) -> dict:
     """Create a new coffee shop order for a customer.
@@ -305,6 +390,22 @@ def reset_state() -> dict:
     """Reset all order and customer data back to its original defaults. Useful between test runs."""
     store.reset()
     return {"ok": True, "message": "Order state reset to defaults"}
+
+
+# ---------------------------------------------------------------------------
+# Resources for UI
+# ---------------------------------------------------------------------------
+
+@mcp.resource(
+    ORDER_FORM_URI,
+    app=AppConfig(
+        csp=ResourceCSP(resource_domains=["https://unpkg.com"])
+    )
+)
+def order_form_view() -> str:
+    """Serve the interactive order form HTML for creating orders."""
+    html_path = Path(__file__).parent / "order_form.html"
+    return html_path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

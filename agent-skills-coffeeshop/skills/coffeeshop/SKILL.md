@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires MCP servers (product_items, orders) configured in .vscode\mcp.json. Designed for GitHub Copilot CLI.
 metadata:
   author: agent-skills-demo
-  version: "2.0"
+  version: "3.1"
   category: demo
   loop-type: agentic
 allowed-tools: mcp__orders__* mcp__product_items__* Read
@@ -28,8 +28,15 @@ This skill uses two MCP servers that provide tools for product catalog managemen
 - `lookup_customer(email?, customer_id?)` — Look up a customer by email or ID
 - `get_order(order_id)` — Get full details for an order
 - `order_history(customer_id)` — List all orders for a customer
-- `create_order(customer_id, order_dto)` — Create a new order for a customer
+- `get_menu()` — Get all menu items with prices (used internally by the order form UI)
+- `open_order_form(customer_id)` — Open the interactive order form for the customer to browse menu and place an order
+- `create_order(customer_id, order_dto)` — Create a new order (called internally by the order form on submit)
 - `update_order(order_id, status?, add_note?)` — Update an order's status and/or add a note
+
+**Interactive Order Form** (MCP Apps UI):
+- The orders server exposes an interactive HTML order form at `ui://orders/order_form.html`.
+- When the customer wants to place an order, present this form instead of asking them to type item names.
+- The form lets customers select items from a dropdown, see prices auto-filled, adjust quantities, and submit.
 
 For response phrasing, read [assets/response-templates.md](assets/response-templates.md).
 
@@ -86,22 +93,45 @@ Maintain these variables in your working memory throughout the loop. Reset them 
    - IF `INTENT` is **informational** (`order-status`, `account`):
      - These are simple lookups — do NOT create an order. Just simple show the customer the internal state, that mean `ORDER` or `CUSTOMER`
      - Then repeat Step 2 from the top.
-   - IF `INTENT` is **actionable** (`pick-item-types`):
-     - Call: `get_item_types()`, show all item types (name, price) to the customer, and ask them to pick.
-     - Get all item types picked by the customer, then call: `get_items_prices(item_types=<item_types>)`
-     - **GOTO → STEP 3**
+   - IF `INTENT` is **actionable** (`item-types`, `process-order`):
+     - Call: `open_order_form(customer_id=<CUSTOMER.customer_id>)` to present the interactive order form UI at `ui://orders/order_form.html`.
+     - The form automatically loads the menu via `get_menu()`, lets the customer select items from a dropdown, shows prices (read-only), and allows quantity adjustments.
+     - Wait for the customer to select items, adjust quantities, and click "Place Order" on the form.
+     - When the customer clicks "Place Order", the form sends a message to the chat containing the selected items and an `[ORDER_DATA]` JSON block with `{ customer_id, order_dto: { items } }`.
+     - Parse the `[ORDER_DATA]` JSON from that message, then call: `create_order(customer_id=<customer_id>, order_dto=<order_dto>)` to create the order with status="pending".
+     - **Immediately proceed to STEP 3** — do NOT wait for the customer to ask for a summary.
 ---
 
-### STEP 3 — PROCESS ORDER
+### STEP 3 — REVIEW & CONFIRM ORDER
 
-1. Use the item types and prices from Step 2 to create an order summary for the customer. Confirm the details with them.
-2. IF the customer confirms the order:
-   - Call: `create_order(customer_id=<CUSTOMER.customer_id>, order_dto=<order_dto>)`
-   - Store the returned `order_id` as `ORDER_ID`.
-   - Call: `update_order(order_id=<ORDER_ID>, status="confirmed", add_note="Order confirmed with items: <item_list>")`
-   - Thank the customer and provide an estimated pickup time.
-   - **GOTO → END**
-3. IF the customer does NOT confirm the order:
-   - Ask if they would like to modify their order or if they have any special instructions.
-   - Wait for their reply, then update the order summary accordingly and repeat Step 3 from the top.
-4. END — the interaction is complete.
+**Goal:** As soon as the order is created via the form, immediately display the order summary and ask for confirmation.
+
+1. The order has been created via the interactive order form with status="pending". Store it in `ORDER`.
+2. Immediately call: `get_order(order_id=<ORDER.order_id>)` to retrieve the full order details. Show the summary right away without waiting for additional customer input.
+3. Display order summary using the template from [assets/response-templates.md](assets/response-templates.md):
+   - Format each item as: `- {qty}x {item_name} — ${price} each`
+   - Show the total amount
+   - Ask: "Does this look correct?"
+4. Wait for customer confirmation.
+5. IF customer confirms (says "yes", "confirm", "looks good", etc.):
+   - **GOTO → STEP 4**
+6. IF customer rejects or wants to modify:
+   - Ask what they'd like to change
+   - Either cancel the order or guide them to place a new order
+   - **GOTO → STEP 2**
+
+**GOTO → STEP 4**
+
+---
+
+### STEP 4 — FINALIZE ORDER
+
+**Goal:** Confirm the order and provide pickup details.
+
+1. Call: `update_order(order_id=<ORDER.order_id>, status="confirmed", add_note="Order confirmed with items: <item_list>")`
+2. Thank the customer by name and provide an estimated pickup time:
+   - Beverages only: 5-10 minutes
+   - With food items: 10-15 minutes
+3. Display the confirmed order ID for reference.
+4. **GOTO → END**
+5. END — the interaction is complete.
