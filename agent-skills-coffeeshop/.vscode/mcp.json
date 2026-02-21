@@ -1,0 +1,66 @@
+{
+    "servers": {
+        "markitdown": {
+			"command": "uvx",
+			"args": [
+				"markitdown-mcp"
+			],
+			"type": "stdio"
+		},
+        "microsoft-docs": {
+			"url": "https://learn.microsoft.com/api/mcp",
+			"type": "http"
+		},
+        "sequentialthinking": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-sequential-thinking"
+			],
+			"type": "stdio"
+		},
+        "aspire": {
+			"type": "stdio",
+			"command": "aspire",
+			"args": [
+				"mcp",
+				"start"
+			]
+		},
+        "chrome-devtools": {
+			"command": "npx",
+			"args": [
+				"chrome-devtools-mcp@latest"
+			]
+		},
+        "playwright": {
+			"command": "npx",
+			"args": [
+				"@playwright/mcp@latest"
+			],
+			"type": "stdio"
+		},
+		"context7": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"-y",
+				"@upstash/context7-mcp@latest"
+			]
+		},
+		"deepwiki": {
+			"url": "https://mcp.deepwiki.com/mcp",
+			"type": "http"
+		},
+		"product_items": {
+			"type": "stdio",
+			"command": "uv",
+			"args": ["run", "mcp/product_catalogs.py"]
+		},
+		"orders": {
+			"type": "stdio",
+			"command": "uv",
+			"args": ["run", "mcp/orders.py"]
+		}
+    }
+}
