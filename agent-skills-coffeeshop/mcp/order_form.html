@@ -12,29 +12,29 @@
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 20px;
-      background: #f5f5f5;
+      padding: 8px;
+      background: transparent;
       color: #333;
     }
     .container {
-      max-width: 800px;
+      max-width: 100%;
       margin: 0 auto;
-      background: white;
-      padding: 24px;
+      background: #fff;
+      padding: 16px 20px;
       border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
     h1 {
-      margin-bottom: 8px;
-      font-size: 24px;
+      margin-bottom: 4px;
+      font-size: 20px;
       color: #2c3e50;
     }
     .customer-info {
-      margin-bottom: 20px;
-      padding: 12px;
+      margin-bottom: 16px;
+      padding: 8px 12px;
       background: #f8f9fa;
       border-radius: 4px;
-      font-size: 14px;
+      font-size: 13px;
       color: #555;
     }
     .order-grid {
@@ -152,7 +152,7 @@
     }
     @media (prefers-color-scheme: dark) {
       body {
-        background: #1a1a1a;
+        background: transparent;
         color: #e0e0e0;
       }
       .container {
@@ -187,6 +187,59 @@
         color: #e0e0e0;
       }
     }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .btn-close {
+      background: transparent;
+      color: #999;
+      border: 1px solid #ddd;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .btn-close:hover {
+      background: #f44336;
+      color: white;
+      border-color: #f44336;
+    }
+    .collapsed-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #555;
+    }
+    .collapsed-bar button {
+      background: #4CAF50;
+      color: white;
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .collapsed-bar button:hover {
+      background: #45a049;
+    }
+    body.collapsed .container { display: none; }
+    body.collapsed .collapsed-bar { display: flex; }
+    @media (prefers-color-scheme: dark) {
+      .btn-close { color: #888; border-color: #555; }
+      .btn-close:hover { background: #f44336; color: white; border-color: #f44336; }
+      .collapsed-bar { background: #2d2d2d; color: #b0b0b0; }
+    }
     @media (max-width: 640px) {
       .order-grid {
         grid-template-columns: 1fr;
@@ -203,8 +256,15 @@
   </style>
 </head>
 <body>
+  <div class="collapsed-bar" id="collapsedBar">
+    <span>☕ Order form minimized</span>
+    <button type="button" onclick="reopenForm()">Reopen</button>
+  </div>
   <div class="container">
-    <h1>☕ Create New Order</h1>
+    <div class="header-row">
+      <h1>☕ Create New Order</h1>
+      <button type="button" class="btn-close" onclick="closeForm()" title="Close form">&times;</button>
+    </div>
     <div class="customer-info" id="customerInfo">
       Loading customer information...
     </div>
@@ -228,275 +288,349 @@
     </form>
 
     <div id="message"></div>
-    <div id="debugLog" style="display:none;margin-top:20px;padding:12px;background:#1e1e1e;color:#0f0;font-family:monospace;font-size:12px;border-radius:4px;max-height:200px;overflow-y:auto;white-space:pre-wrap;"></div>
   </div>
 
-  <!-- Non-module script for error catching and logging -->
   <script>
-    window._log = function(msg) {
-      const ts = new Date().toISOString().slice(11,23);
-      const line = `[${ts}] ${msg}`;
-      console.log(line);
-      const el = document.getElementById('debugLog');
-      if (el) { el.textContent += line + '\n'; el.scrollTop = el.scrollHeight; }
-    };
-    window._logErr = function(msg) {
-      const ts = new Date().toISOString().slice(11,23);
-      const line = `[${ts}] ❌ ${msg}`;
-      console.error(line);
-      const el = document.getElementById('debugLog');
-      if (el) { el.textContent += line + '\n'; el.scrollTop = el.scrollHeight; }
-    };
-    window.onerror = function(msg, src, line, col, err) {
+    // -----------------------------------------------------------------------
+    // Close / reopen helpers
+    // -----------------------------------------------------------------------
+    function closeForm() {
+      document.body.classList.add('collapsed');
+    }
+    function reopenForm() {
+      document.body.classList.remove('collapsed');
+    }
+
+    // -----------------------------------------------------------------------
+    // Inline MCP Apps client — uses postMessage JSON-RPC directly.
+    // No external SDK import needed (avoids CSP restrictions in CopilotKit's
+    // sandboxed iframe which blocks unpkg.com).
+    // -----------------------------------------------------------------------
+
+    // Logging helpers
+    function _log(msg) {
+      const ts = new Date().toISOString().slice(11, 23);
+      console.log('[' + ts + '] ' + msg);
+    }
+    function _logErr(msg) {
+      const ts = new Date().toISOString().slice(11, 23);
+      console.error('[' + ts + '] ❌ ' + msg);
+    }
+    window.onerror = function (msg, src, line) {
       _logErr('Global error: ' + msg + ' at ' + src + ':' + line);
     };
-    window.addEventListener('unhandledrejection', function(e) {
+    window.addEventListener('unhandledrejection', function (e) {
       _logErr('Unhandled rejection: ' + (e.reason?.message || e.reason || 'unknown'));
     });
-    _log('Page loaded. Waiting for module script...');
-  </script>
 
-  <script type="module">
-    _log('Module script started.');
+    // JSON-RPC helpers
+    let _rpcId = 0;
+    const _pending = new Map(); // id → { resolve, reject }
 
-    let App;
-    try {
-      _log('Importing MCP Apps SDK from unpkg (app-with-deps.js)...');
-      const sdk = await import('https://unpkg.com/@modelcontextprotocol/ext-apps@0.4.0/dist/src/app-with-deps.js');
-      App = sdk.App;
-      _log('SDK imported OK. App class: ' + (typeof App));
-      _log('SDK exports: ' + Object.keys(sdk).join(', '));
-    } catch (e) {
-      _logErr('SDK import failed: ' + e.message);
-      document.getElementById('customerInfo').textContent = 'Error: Failed to load MCP Apps SDK. See debug log below.';
-      throw e;
+    function sendRpcRequest(method, params) {
+      return new Promise(function (resolve, reject) {
+        const id = ++_rpcId;
+        _pending.set(id, { resolve: resolve, reject: reject });
+        window.parent.postMessage(
+          { jsonrpc: '2.0', id: id, method: method, params: params || {} },
+          '*'
+        );
+        // Timeout after 15s
+        setTimeout(function () {
+          if (_pending.has(id)) {
+            _pending.delete(id);
+            reject(new Error('RPC timeout for ' + method));
+          }
+        }, 15000);
+      });
     }
 
-    let app;
-    try {
-      app = new App({ name: 'CoffeeShopOrder', version: '1.0.0' });
-      _log('App instance created.');
-    } catch (e) {
-      _logErr('App() constructor failed: ' + e.message);
-      document.getElementById('customerInfo').textContent = 'Error: Failed to initialize MCP App.';
-      throw e;
+    function sendRpcNotification(method, params) {
+      window.parent.postMessage(
+        { jsonrpc: '2.0', method: method, params: params || {} },
+        '*'
+      );
     }
 
-    let menuItems = [];
-    let customerId = null;
-    let customerName = '';
+    // Listen for JSON-RPC responses AND notifications from the host
+    window.addEventListener('message', function (event) {
+      var msg = event.data;
+      if (!msg || msg.jsonrpc !== '2.0') return;
 
-    // Connect to host (postMessage channel to VS Code)
-    try {
-      _log('Connecting to host via postMessage...');
-      await app.connect();
-      _log('Connected to host successfully.');
-    } catch (e) {
-      _logErr('app.connect() failed: ' + e.message);
-      document.getElementById('customerInfo').textContent = 'Error: Failed to connect to MCP host. See debug log.';
-      throw e;
+      // Notification from host: tool-input contains the arguments the LLM
+      // passed to open_order_form (e.g. { customer_id: "C-1001" }).
+      if (!msg.id && msg.method === 'ui/notifications/tool-input') {
+        var params = msg.params || {};
+        _log('Received tool-input: ' + JSON.stringify(params));
+        var args = params.arguments || params || {};
+        if (args.customer_id) {
+          _toolInputCustomerId = args.customer_id;
+          // Don't eagerly call loadCustomer here — tool-result
+          // notification arrives right after and carries the resolved
+          // customer_id + customer_name directly.
+          // Init fallback will use _toolInputCustomerId if tool-result
+          // didn't arrive in time.
+        }
+        return;
+      }
+
+      // Notification from host: tool-result is the return value of the tool
+      if (!msg.id && msg.method === 'ui/notifications/tool-result') {
+        _log('Received tool-result: ' + JSON.stringify(msg.params).slice(0, 300));
+        // Try to extract customer data from open_order_form result
+        try {
+          var trData = parseToolResult(msg.params);
+          if (trData.ok && trData.customer_id) {
+            _toolInputCustomerId = trData.customer_id;
+            if (!customerId) {
+              customerId = trData.customer_id;
+              customerName = trData.customer_name || trData.customer_id;
+              document.getElementById('customerInfo').textContent =
+                'Customer: ' + customerName + ' (' + customerId + ')';
+              _log('Customer loaded from tool-result: ' + customerId);
+            }
+          }
+        } catch (e) { /* not a parseable result, ignore */ }
+        return;
+      }
+
+      // Response to a request we sent
+      if (msg.id != null && _pending.has(msg.id)) {
+        var cb = _pending.get(msg.id);
+        _pending.delete(msg.id);
+        if (msg.error) {
+          cb.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+        } else {
+          cb.resolve(msg.result);
+        }
+      }
+    });
+
+    // Call an MCP server tool via the host proxy
+    function callServerTool(name, args) {
+      _log('callServerTool: ' + name);
+      return sendRpcRequest('tools/call', { name: name, arguments: args || {} });
     }
 
-    // Check host context
-    try {
-      const ctx = app.getHostContext();
-      _log('Host context: ' + JSON.stringify(ctx).slice(0, 300));
-    } catch (e) {
-      _log('getHostContext() unavailable: ' + e.message);
+    // Send a chat message back to the conversation
+    function sendChatMessage(text) {
+      _log('sendChatMessage');
+      sendRpcNotification('notifications/message', {
+        role: 'user',
+        content: [{ type: 'text', text: text }],
+      });
     }
 
-    // Helper: parse text content from a tool result
+    // Parse the text content from an MCP tool result
     function parseToolResult(result) {
-      if (result.isError) return { ok: false, error: 'Tool returned error: ' + JSON.stringify(result.content) };
-      if (result.content && result.content[0]?.text) {
+      if (result.isError)
+        return { ok: false, error: 'Tool error: ' + JSON.stringify(result.content) };
+      if (result.content && result.content[0] && result.content[0].text) {
         return JSON.parse(result.content[0].text);
       }
       return { ok: false, error: 'No text content in result' };
     }
 
-    // Load customer context
-    _log('Calling get_form_context...');
-    try {
-      const result = await app.callServerTool({ name: 'get_form_context', arguments: {} });
-      _log('get_form_context result: ' + JSON.stringify(result).slice(0, 300));
-      const data = parseToolResult(result);
-      if (data.ok) {
-        customerId = data.customer_id;
-        customerName = data.customer_name || data.customer_id;
-        document.getElementById('customerInfo').textContent =
-          `Customer: ${customerName} (${customerId})`;
-        _log('Customer loaded: ' + customerId + ' / ' + customerName);
-      } else {
-        document.getElementById('customerInfo').textContent =
-          'Error: ' + (data.error || 'Failed to load customer');
-        _logErr('get_form_context: ' + (data.error || 'ok=false'));
+    // -----------------------------------------------------------------------
+    // App state
+    // -----------------------------------------------------------------------
+    var menuItems = [];
+    var customerId = null;
+    var customerName = '';
+    var _toolInputCustomerId = null; // set by ui/notifications/tool-input
+
+    // Load customer info by ID using lookup_customer tool
+    async function loadCustomer(cid) {
+      try {
+        var result = await callServerTool('lookup_customer', { customer_id: cid });
+        _log('lookup_customer result: ' + JSON.stringify(result).slice(0, 300));
+        var data = parseToolResult(result);
+        if (data.ok && data.customer) {
+          customerId = data.customer.customer_id;
+          customerName = data.customer.name || customerId;
+          document.getElementById('customerInfo').textContent =
+            'Customer: ' + customerName + ' (' + customerId + ')';
+          _log('Customer loaded: ' + customerId + ' (' + customerName + ')');
+        } else {
+          document.getElementById('customerInfo').textContent =
+            'Error: ' + (data.error || 'Customer not found');
+          _logErr('lookup_customer: ' + (data.error || 'ok=false'));
+        }
+      } catch (e) {
+        _logErr('lookup_customer error: ' + e.message);
+        document.getElementById('customerInfo').textContent = 'Error loading customer.';
       }
-    } catch (e) {
-      _logErr('get_form_context threw: ' + e.message);
-      document.getElementById('customerInfo').textContent = 'Error loading customer. See debug log.';
     }
 
-    // Load menu
-    _log('Calling get_menu...');
-    try {
-      const result = await app.callServerTool({ name: 'get_menu', arguments: {} });
-      _log('get_menu result: ' + JSON.stringify(result).slice(0, 300));
-      const data = parseToolResult(result);
-      if (data.ok && data.menu) {
-        menuItems = data.menu;
-        _log('Menu loaded: ' + menuItems.length + ' items');
-        if (document.getElementById('orderRows').children.length === 0) {
-          addRow();
-        }
+    // Show a temporary message
+    function showMessage(text, type) {
+      var msgEl = document.getElementById('message');
+      msgEl.textContent = text;
+      msgEl.className = type;
+      msgEl.style.display = 'block';
+      _log('showMessage: [' + type + '] ' + text);
+      setTimeout(function () { msgEl.style.display = 'none'; }, 5000);
+    }
+
+    // Update order total
+    function updateTotal() {
+      var rows = document.querySelectorAll('#orderRows .order-grid');
+      var total = 0;
+      rows.forEach(function (row) {
+        var price = parseFloat(row.querySelector('[data-field="price"]').value) || 0;
+        var qty = parseInt(row.querySelector('[data-field="qty"]').value) || 0;
+        total += price * qty;
+      });
+      document.getElementById('totalAmount').textContent = '$' + total.toFixed(2);
+    }
+
+    // Handle item dropdown change
+    function onItemSelect(select) {
+      var row = select.closest('.order-grid');
+      var priceInput = row.querySelector('[data-field="price"]');
+      var opt = select.options[select.selectedIndex];
+      if (opt.value) {
+        priceInput.value = parseFloat(opt.dataset.price || 0).toFixed(2);
+        _log('Item selected: ' + opt.value + ' price=' + opt.dataset.price);
       } else {
-        _logErr('get_menu: ' + (data.error || 'no menu'));
+        priceInput.value = '0.00';
       }
-    } catch (e) {
-      _logErr('get_menu threw: ' + e.message);
+      updateTotal();
     }
 
     // Add a new order row
-    window.addRow = function() {
+    function addRow() {
       _log('addRow() called. menuItems.length=' + menuItems.length);
-      const container = document.getElementById('orderRows');
-      const row = document.createElement('div');
+      var container = document.getElementById('orderRows');
+      var row = document.createElement('div');
       row.className = 'order-grid';
-      row.innerHTML = `
-        <select data-field="item_type" onchange="onItemSelect(this)">
-          <option value="">-- Select Item --</option>
-          ${menuItems.map(item =>
-            `<option value="${item.item_type}" data-price="${item.price}">${item.name} - $${item.price.toFixed(2)}</option>`
-          ).join('')}
-        </select>
-        <input type="number" data-field="price" step="0.25" min="0" value="0.00" readonly tabindex="-1" style="background:#eee;cursor:default;" />
-        <input type="number" data-field="qty" step="1" min="1" value="1" onchange="updateTotal()" />
-        <button type="button" class="btn-remove" onclick="removeRow(this)" title="Remove item">×</button>
-      `;
+      var optionsHtml = '<option value="">-- Select Item --</option>';
+      for (var i = 0; i < menuItems.length; i++) {
+        var item = menuItems[i];
+        optionsHtml +=
+          '<option value="' + item.item_type + '" data-price="' + item.price + '">' +
+          item.name + ' - $' + item.price.toFixed(2) + '</option>';
+      }
+      row.innerHTML =
+        '<select data-field="item_type" onchange="onItemSelect(this)">' + optionsHtml + '</select>' +
+        '<input type="number" data-field="price" step="0.25" min="0" value="0.00" readonly tabindex="-1" style="background:#eee;cursor:default;" />' +
+        '<input type="number" data-field="qty" step="1" min="1" value="1" onchange="updateTotal()" />' +
+        '<button type="button" class="btn-remove" onclick="removeRow(this)" title="Remove item">\u00d7</button>';
       container.appendChild(row);
-    };
+    }
 
     // Remove a row
-    window.removeRow = function(btn) {
-      const container = document.getElementById('orderRows');
+    function removeRow(btn) {
+      var container = document.getElementById('orderRows');
       if (container.children.length > 1) {
         btn.closest('.order-grid').remove();
         updateTotal();
       } else {
         showMessage('At least one item is required', 'error');
       }
-    };
-
-    // Handle item selection
-    window.onItemSelect = function(select) {
-      const row = select.closest('.order-grid');
-      const priceInput = row.querySelector('[data-field="price"]');
-      const selectedOption = select.options[select.selectedIndex];
-
-      if (selectedOption.value) {
-        const price = parseFloat(selectedOption.dataset.price || 0);
-        priceInput.value = price.toFixed(2);
-        _log('Item selected: ' + selectedOption.value + ' price=' + price);
-      } else {
-        priceInput.value = '0.00';
-      }
-
-      updateTotal();
-    };
-
-    // Update total amount
-    window.updateTotal = function() {
-      const rows = document.querySelectorAll('#orderRows .order-grid');
-      let total = 0;
-
-      rows.forEach(row => {
-        const price = parseFloat(row.querySelector('[data-field="price"]').value) || 0;
-        const qty = parseInt(row.querySelector('[data-field="qty"]').value) || 0;
-        total += price * qty;
-      });
-
-      document.getElementById('totalAmount').textContent = `$${total.toFixed(2)}`;
-    };
-
-    // Show message
-    function showMessage(text, type) {
-      const msgEl = document.getElementById('message');
-      msgEl.textContent = text;
-      msgEl.className = type;
-      msgEl.style.display = 'block';
-      _log('showMessage: [' + type + '] ' + text);
-      setTimeout(() => {
-        msgEl.style.display = 'none';
-      }, 5000);
     }
 
-    // Handle form submission — send order details back to chat via sendMessage
-    // The agent will call create_order on our behalf and show the summary
-    document.getElementById('orderForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      _log('Form submitted. customerId=' + customerId);
+    // Handle form submission
+    document.addEventListener('DOMContentLoaded', function () {
+      document.getElementById('orderForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        _log('Form submitted. customerId=' + customerId);
 
-      if (!customerId) {
-        showMessage('No customer loaded. Cannot create order.', 'error');
-        return;
-      }
-
-      const rows = document.querySelectorAll('#orderRows .order-grid');
-      const items = [];
-
-      for (const row of rows) {
-        const itemType = row.querySelector('[data-field="item_type"]').value;
-        const price = parseFloat(row.querySelector('[data-field="price"]').value) || 0;
-        const qty = parseInt(row.querySelector('[data-field="qty"]').value) || 0;
-
-        if (!itemType) {
-          showMessage('Please select an item for all rows', 'error');
+        if (!customerId) {
+          showMessage('No customer loaded. Cannot create order.', 'error');
           return;
         }
 
-        if (qty < 1) {
-          showMessage('Quantity must be at least 1', 'error');
-          return;
+        var rows = document.querySelectorAll('#orderRows .order-grid');
+        var items = [];
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var itemType = row.querySelector('[data-field="item_type"]').value;
+          var price = parseFloat(row.querySelector('[data-field="price"]').value) || 0;
+          var qty = parseInt(row.querySelector('[data-field="qty"]').value) || 0;
+          if (!itemType) { showMessage('Please select an item for all rows', 'error'); return; }
+          if (qty < 1) { showMessage('Quantity must be at least 1', 'error'); return; }
+          var menuItem = menuItems.find(function (m) { return m.item_type === itemType; });
+          items.push({ item_type: itemType, name: menuItem ? menuItem.name : itemType, qty: qty, price: price });
         }
+        if (items.length === 0) { showMessage('Please add at least one item', 'error'); return; }
 
-        const menuItem = menuItems.find(m => m.item_type === itemType);
-        items.push({
-          item_type: itemType,
-          name: menuItem ? menuItem.name : itemType,
-          qty: qty,
-          price: price
-        });
-      }
+        var total = items.reduce(function (sum, it) { return sum + it.price * it.qty; }, 0);
+        var itemLines = items.map(function (it) { return '- ' + it.qty + 'x ' + it.name + ' — $' + it.price.toFixed(2) + ' each'; }).join('\n');
+        var orderJson = JSON.stringify({ customer_id: customerId, order_dto: { items: items } });
+        var messageText = "I'd like to place this order:\n" + itemLines + '\nTotal: $' + total.toFixed(2) + '\n\n[ORDER_DATA]: ' + orderJson;
 
-      if (items.length === 0) {
-        showMessage('Please add at least one item', 'error');
-        return;
-      }
-
-      // Build a message for the chat with order details embedded as JSON
-      const total = items.reduce((sum, i) => sum + (i.price * i.qty), 0);
-      const itemLines = items.map(i => `- ${i.qty}x ${i.name} — $${i.price.toFixed(2)} each`).join('\n');
-      const orderJson = JSON.stringify({ customer_id: customerId, order_dto: { items } });
-      const messageText = `I'd like to place this order:\n${itemLines}\nTotal: $${total.toFixed(2)}\n\n[ORDER_DATA]: ${orderJson}`;
-
-      _log('Sending order to chat via sendMessage...');
-      try {
-        await app.sendMessage({
-          role: 'user',
-          content: [{ type: 'text', text: messageText }]
-        });
-        _log('sendMessage succeeded.');
+        sendChatMessage(messageText);
         showMessage('Order sent! Check the chat for your order summary.', 'success');
-        // Reset form
         document.getElementById('orderRows').innerHTML = '';
         addRow();
         updateTotal();
-      } catch (e) {
-        _logErr('sendMessage threw: ' + e.message);
-        showMessage('Error sending order: ' + e.message, 'error');
-      }
+        // Auto-collapse the form after sending
+        setTimeout(closeForm, 1500);
+      });
     });
 
-    _log('Module init complete. Form is ready.');
+    // -----------------------------------------------------------------------
+    // Initialisation — notify host we're ready, then load data
+    // -----------------------------------------------------------------------
+    _log('Sending ui/notifications/initialized to host...');
+    sendRpcNotification('ui/notifications/initialized', {});
+
+    // Load customer context + menu
+    (async function init() {
+      // Wait briefly for tool-input / tool-result notifications
+      // from the host (carry customer_id from the open_order_form call)
+      await new Promise(function (r) { setTimeout(r, 300); });
+
+      if (customerId) {
+        // Already set by tool-result notification handler
+        _log('Customer already loaded from notification: ' + customerId);
+      } else if (_toolInputCustomerId) {
+        _log('Using customer_id from tool-input: ' + _toolInputCustomerId);
+        await loadCustomer(_toolInputCustomerId);
+      } else {
+        // Fallback: try get_form_context (may work if server has session state)
+        _log('No tool-input customer_id yet, trying get_form_context fallback...');
+        try {
+          var ctxResult = await callServerTool('get_form_context', {});
+          _log('get_form_context result: ' + JSON.stringify(ctxResult).slice(0, 300));
+          var ctx = parseToolResult(ctxResult);
+          if (ctx.ok) {
+            customerId = ctx.customer_id;
+            customerName = ctx.customer_name || ctx.customer_id;
+            document.getElementById('customerInfo').textContent =
+              'Customer: ' + customerName + ' (' + customerId + ')';
+            _log('Customer loaded from form context: ' + customerId);
+          } else {
+            document.getElementById('customerInfo').textContent =
+              'Waiting for customer data...';
+            _logErr('get_form_context: ' + (ctx.error || 'ok=false'));
+          }
+        } catch (e) {
+          _logErr('get_form_context error: ' + e.message);
+          document.getElementById('customerInfo').textContent = 'Waiting for customer data...';
+        }
+      }
+
+      try {
+        var menuResult = await callServerTool('get_menu', {});
+        _log('get_menu result: ' + JSON.stringify(menuResult).slice(0, 300));
+        var data = parseToolResult(menuResult);
+        if (data.ok && data.menu) {
+          menuItems = data.menu;
+          _log('Menu loaded: ' + menuItems.length + ' items');
+          if (document.getElementById('orderRows').children.length === 0) {
+            addRow();
+          }
+        } else {
+          _logErr('get_menu: ' + (data.error || 'no menu'));
+        }
+      } catch (e) {
+        _logErr('get_menu error: ' + e.message);
+      }
+
+      _log('Init complete. Form is ready.');
+    })();
   </script>
 </body>
 </html>

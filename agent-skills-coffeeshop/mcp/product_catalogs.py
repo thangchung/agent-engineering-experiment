@@ -184,8 +184,42 @@ def reset_state() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Entry point — supports dual transport: stdio (default) and HTTP
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Product Catalog MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="Transport type (default: stdio)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8002,
+        help="Port for HTTP transport (default: 8002)",
+    )
+    args = parser.parse_args()
+
+    if args.transport == "http":
+        import uvicorn
+        from starlette.middleware import Middleware
+        from starlette.middleware.cors import CORSMiddleware
+
+        asgi_app = mcp.http_app(
+            middleware=[
+                Middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+            ]
+        )
+        uvicorn.run(asgi_app, host="0.0.0.0", port=args.port)
+    else:
+        mcp.run()

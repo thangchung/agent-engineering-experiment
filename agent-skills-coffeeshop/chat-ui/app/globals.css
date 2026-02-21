@@ -1,0 +1,48 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---------------------------------------------------------------
+   CopilotKit layout overrides – wider chat & full-width form
+   --------------------------------------------------------------- */
+
+/* Widen the main messages column from 48rem (max-w-3xl) to full width
+   with comfortable padding. Targets the wrapper around MessageView,
+   input container, and disclaimer. */
+.max-w-3xl {
+  max-width: 100% !important;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+/* Let message bubbles breathe a bit more (80% → 90%) */
+.max-w-\[80\%\] {
+  max-width: 90% !important;
+}
+
+/* Push messages toward the bottom of the scroll area when content
+   is short, so the chat doesn't feel empty. When messages overflow
+   the viewport height, normal scrolling still works. The scroll
+   container is .overflow-y-scroll (CopilotKit's ScrollView). Its
+   first child is a wrapper div with inline paddingBottom. */
+.overflow-y-scroll > div:first-child {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+/* Slightly bump assistant message font size for readability */
+.overflow-y-scroll p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}

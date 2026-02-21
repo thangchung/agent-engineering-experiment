@@ -1,0 +1,15 @@
+# GitHub Personal Access Token — get via: gh auth token
+GITHUB_TOKEN=your_github_pat_here
+
+# Model to use (GitHub Models supports gpt-4o, gpt-4o-mini, o3-mini, claude-3-5-sonnet, etc.)
+GITHUB_COPILOT_MODEL=gpt-4o
+
+# Path to Copilot CLI binary (install: npm install -g @anthropics/copilot-cli)
+GITHUB_COPILOT_CLI_PATH=copilot
+
+# MCP server URLs (match the --port values when starting servers with --transport http)
+ORDERS_MCP_URL=http://localhost:8001/mcp
+PRODUCT_ITEMS_MCP_URL=http://localhost:8002/mcp
+
+# Agent host port
+AGENT_HOST_PORT=8000

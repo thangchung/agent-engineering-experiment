@@ -1,17 +1,17 @@
 {
-    "servers": {
-        "markitdown": {
-			"command": "uvx",
-			"args": [
-				"markitdown-mcp"
-			],
-			"type": "stdio"
-		},
-        "microsoft-docs": {
+	"servers": {
+		// "markitdown": {
+		// 	"command": "uvx",
+		// 	"args": [
+		// 		"markitdown-mcp"
+		// 	],
+		// 	"type": "stdio"
+		// },
+		"microsoft-docs": {
 			"url": "https://learn.microsoft.com/api/mcp",
 			"type": "http"
 		},
-        "sequentialthinking": {
+		"sequentialthinking": {
 			"command": "npx",
 			"args": [
 				"-y",
@@ -19,27 +19,27 @@
 			],
 			"type": "stdio"
 		},
-        "aspire": {
-			"type": "stdio",
-			"command": "aspire",
-			"args": [
-				"mcp",
-				"start"
-			]
-		},
-        "chrome-devtools": {
-			"command": "npx",
-			"args": [
-				"chrome-devtools-mcp@latest"
-			]
-		},
-        "playwright": {
-			"command": "npx",
-			"args": [
-				"@playwright/mcp@latest"
-			],
-			"type": "stdio"
-		},
+		// "aspire": {
+		// 	"type": "stdio",
+		// 	"command": "aspire",
+		// 	"args": [
+		// 		"mcp",
+		// 		"start"
+		// 	]
+		// },
+		// "chrome-devtools": {
+		// 	"command": "npx",
+		// 	"args": [
+		// 		"chrome-devtools-mcp@latest"
+		// 	]
+		// },
+		// "playwright": {
+		// 	"command": "npx",
+		// 	"args": [
+		// 		"@playwright/mcp@latest"
+		// 	],
+		// 	"type": "stdio"
+		// },
 		"context7": {
 			"type": "stdio",
 			"command": "npx",
@@ -52,6 +52,15 @@
 			"url": "https://mcp.deepwiki.com/mcp",
 			"type": "http"
 		},
+		"mcp-mermaid": {
+			"command": "cmd",
+			"args": [
+				"/c",
+				"npx",
+				"-y",
+				"mcp-mermaid"
+			]
+		},
 		"product_items": {
 			"type": "stdio",
 			"command": "uv",
@@ -62,5 +71,5 @@
 			"command": "uv",
 			"args": ["run", "mcp/orders.py"]
 		}
-    }
+	}
 }

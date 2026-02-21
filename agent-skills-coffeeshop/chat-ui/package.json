@@ -1,0 +1,27 @@
+{
+  "name": "coffeeshop-chat-ui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ag-ui/mcp-apps-middleware": "^0.0.3",
+    "@ai-sdk/openai": "2.0.92",
+    "@copilotkit/react-core": "1.51.3",
+    "@copilotkit/react-ui": "1.51.3",
+    "@copilotkit/runtime": "1.51.3",
+    "next": "15.1.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

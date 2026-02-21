@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastmcp import FastMCP
-from fastmcp.server.apps import AppConfig, ResourceCSP
+from fastmcp.server.apps import AppConfig
 
 mcp = FastMCP(
     "Orders",
@@ -193,6 +193,9 @@ def lookup_customer(
         return {"ok": True, "customer": customer}
     if customer_id:
         customer = store.customers.get(customer_id)
+        # If not found by ID, try email lookup
+        if not customer and "@" in customer_id:
+            customer = store.customer_by_email(customer_id)
         if not customer:
             return {"ok": False, "error": f"No customer found with id '{customer_id}'"}
         return {"ok": True, "customer": customer}
@@ -230,7 +233,7 @@ def order_history(customer_id: str) -> dict:
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI))
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_menu() -> dict:
     """Get the coffee shop menu with all available items and prices.
     
@@ -244,7 +247,7 @@ def get_menu() -> dict:
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI))
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_form_context() -> dict:
     """Get the current customer context for the order form.
     
@@ -265,7 +268,7 @@ def get_form_context() -> dict:
     }
 
 
-@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI))
+@mcp.tool(annotations={"readOnlyHint": True}, app=AppConfig(resource_uri=ORDER_FORM_URI), meta={"ui/resourceUri": ORDER_FORM_URI})
 def open_order_form(customer_id: str) -> dict:
     """Open the interactive order form for a customer.
 
@@ -276,10 +279,13 @@ def open_order_form(customer_id: str) -> dict:
     Call this tool when the customer wants to browse menu items or place an order.
 
     Args:
-        customer_id: The customer ID (e.g. "C-1001").
+        customer_id: The customer ID (e.g. "C-1001") or email address.
     """
     global _current_form_customer
     customer = store.customers.get(customer_id)
+    # If not found by ID, try email lookup
+    if not customer and "@" in customer_id:
+        customer = store.customer_by_email(customer_id)
     if not customer:
         return {"ok": False, "error": f"No customer found with id '{customer_id}'"}
     
@@ -289,7 +295,7 @@ def open_order_form(customer_id: str) -> dict:
     return {
         "ok": True,
         "message": "Order form opened. The customer can now browse the menu and place an order.",
-        "customer_id": customer_id,
+        "customer_id": customer["customer_id"],
         "customer_name": customer["name"],
     }
 
@@ -396,12 +402,7 @@ def reset_state() -> dict:
 # Resources for UI
 # ---------------------------------------------------------------------------
 
-@mcp.resource(
-    ORDER_FORM_URI,
-    app=AppConfig(
-        csp=ResourceCSP(resource_domains=["https://unpkg.com"])
-    )
-)
+@mcp.resource(ORDER_FORM_URI)
 def order_form_view() -> str:
     """Serve the interactive order form HTML for creating orders."""
     html_path = Path(__file__).parent / "order_form.html"
@@ -409,8 +410,42 @@ def order_form_view() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Entry point — supports dual transport: stdio (default) and HTTP
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Orders MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="Transport type (default: stdio)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8001,
+        help="Port for HTTP transport (default: 8001)",
+    )
+    args = parser.parse_args()
+
+    if args.transport == "http":
+        import uvicorn
+        from starlette.middleware import Middleware
+        from starlette.middleware.cors import CORSMiddleware
+
+        asgi_app = mcp.http_app(
+            middleware=[
+                Middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+            ]
+        )
+        uvicorn.run(asgi_app, host="0.0.0.0", port=args.port)
+    else:
+        mcp.run()

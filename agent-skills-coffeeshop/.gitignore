@@ -1,1 +1,5 @@
 __pycache__
+.env
+node_modules
+.next
+dist
