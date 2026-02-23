@@ -26,7 +26,7 @@ implementation attention (detailed in §7).
 
 | # | Component | Runtime | Process Model | Primary Role |
 |---|-----------|---------|---------------|--------------|
-| 1 | **apphost** | .NET Aspire 9.x | Orchestrator | Registers all resources, wires service discovery, injects env vars (URLs, OTLP), starts everything with `dotnet run --project apphost/` |
+| 1 | **apphost** | .NET Aspire 13.x | Orchestrator | Registers all resources, wires service discovery, injects env vars (URLs, OTLP), starts everything with `dotnet run --project apphost/` |
 | 2 | **counter** | .NET 10 Minimal API | In-process | MAF orchestrating agent. Sole HTTP entry point. Owns customer lookup, intent classification, order CRUD, dispatch to barista/kitchen, streaming status via AG-UI |
 | 3 | **barista** | .NET 10 | In-process | MAF agent. Consumes beverage work items from `Channel<T>`. Signals completion back to counter |
 | 4 | **kitchen** | .NET 10 | In-process | MAF agent. Consumes food/others work items from `Channel<T>`. Signals completion back to counter |

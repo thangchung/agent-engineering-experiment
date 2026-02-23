@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-coffeeshop-ordering`
 **Created**: 2026-02-22
-**Status**: Draft
+**Status**: Ready for Implementation
 **Input**: Full coffeeshop ordering system: product catalog browsing, customer lookup, order placement and confirmation, order status tracking, and order history
 
 **Explicitly out of scope**: user authentication / authorization (no login, no tokens, no API keys); customer tier discount or priority logic; real-time kitchen queue depth; persistent storage across restarts.
@@ -21,6 +21,11 @@
 - Q: When can a customer cancel an order? → A: Cancel only before `preparing` — same boundary as modification (FR-010/FR-011). Once workers start processing, cancellation is refused.
 - Q: Where are `Others` category items routed? → A: Kitchen — `Others` is treated the same as `Food` for routing and pickup-time purposes.
 - Q: What is the maximum quantity of a single item per order? → A: 5 units per item per order.
+
+### Session 2026-02-23
+
+- **CHK052 resolution** — FR-009 governs the pre-confirmation cart-building phase: items can be added, removed, or changed before calling `PlaceOrder`. Post-confirmation item changes (before `preparing`) are also permitted via `PATCH /api/v1/orders/{orderId}`, governed by FR-010/FR-011. Both phases share the same boundary: once `preparing` begins, neither items nor notes can be changed. FR-009 and FR-010 are not in conflict — they describe the same mutability window from two different entry points (UI cart vs. PATCH API).
+- **CHK051 resolution** — The AG-UI streaming event `"order ready — all items complete"` and the `OrderStatus` transition to `Ready` in the in-memory store occur atomically. Counter emits the AG-UI event and writes `OrderStatus = Ready` in the same logical operation, after `Task.WhenAll` on both worker reply channels completes. Any client calling `GET /api/v1/orders/{orderId}` after receiving the "order ready" stream event MUST observe `"status": "ready"`.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -248,8 +253,9 @@ order details are retrieved.
 - **FR-002**: System MUST greet an identified customer by their first name.
 - **FR-003**: System MUST return a clear "account not found" message and re-prompt
   when a customer provides an unrecognized identifier.
-- **FR-004**: System MUST display all currently available menu item types with
-  their prices when a customer requests the menu.
+- **FR-004**: System MUST display all menu item types with their prices and
+  availability status when a customer requests the menu. Unavailable items MUST
+  appear in the listing (with a visual indicator) and MUST NOT be silently filtered.
 - **FR-005**: System MUST present a complete order summary (items selected, unit
   prices, total) for customer review before an order is confirmed.
 - **FR-006**: System MUST create an order and return a unique order ID when a
@@ -268,9 +274,9 @@ order details are retrieved.
   their order before confirming.
 - **FR-010**: System MUST allow a customer to add a text note or special
   instruction to a confirmed order that has not yet reached `preparing` status.
-- **FR-011**: System MUST prevent modification of an order that is already in
-  preparation, `preparing`, completed, or cancelled, and MUST inform the customer of the
-  current order status.
+- **FR-011**: System MUST prevent modification of an order that has reached
+  `preparing`, `ready`, `completed`, or `cancelled` status, and MUST inform
+  the customer of the current order status.
 - **FR-012**: System MUST display the current status of any order when queried
   by an identified customer.
 - **FR-013**: System MUST return a customer's full order history, sorted
@@ -331,7 +337,7 @@ order details are retrieved.
   (`gold` | `silver` | `standard`). Tier is display-only; it carries no
   discount or priority behaviour.
 
-- **Item Type**: A categories of product on the menu (e.g., Espresso, Latte,
+- **Item Type**: A category of product on the menu (e.g., Espresso, Latte,
   Cappuccino). Key attributes: item type ID, name.
 
 - **Menu Item**: A specific priced variant of an item type available for ordering.

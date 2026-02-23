@@ -2,16 +2,8 @@
 # Common PowerShell functions analogous to common.sh
 
 function Get-RepoRoot {
-    try {
-        $result = git rev-parse --show-toplevel 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            return $result
-        }
-    } catch {
-        # Git command failed
-    }
-    
-    # Fall back to script location for non-git repos
+    # Always resolve relative to script location:
+    # .specify/scripts/powershell/../../.. = project root (speckit-coffeeshop/)
     return (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
 }
 

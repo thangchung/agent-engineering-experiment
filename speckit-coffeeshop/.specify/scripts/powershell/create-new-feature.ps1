@@ -35,28 +35,10 @@ if (-not $FeatureDescription -or $FeatureDescription.Count -eq 0) {
 
 $featureDesc = ($FeatureDescription -join ' ').Trim()
 
-# Resolve repository root. Prefer git information when available, but fall back
-# to searching for repository markers so the workflow still functions in repositories that
-# were initialized with --no-git.
+# Resolve project root relative to script location:
+# .specify/scripts/powershell/../../.. = project root (speckit-coffeeshop/)
 function Find-RepositoryRoot {
-    param(
-        [string]$StartDir,
-        [string[]]$Markers = @('.git', '.specify')
-    )
-    $current = Resolve-Path $StartDir
-    while ($true) {
-        foreach ($marker in $Markers) {
-            if (Test-Path (Join-Path $current $marker)) {
-                return $current
-            }
-        }
-        $parent = Split-Path $current -Parent
-        if ($parent -eq $current) {
-            # Reached filesystem root without finding markers
-            return $null
-        }
-        $current = $parent
-    }
+    return (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
 }
 
 function Get-HighestNumberFromSpecs {
@@ -129,21 +111,17 @@ function ConvertTo-CleanBranchName {
     
     return $Name.ToLower() -replace '[^a-z0-9]', '-' -replace '-{2,}', '-' -replace '^-', '' -replace '-$', ''
 }
-$fallbackRoot = (Find-RepositoryRoot -StartDir $PSScriptRoot)
-if (-not $fallbackRoot) {
+$repoRoot = (Find-RepositoryRoot)
+if (-not $repoRoot) {
     Write-Error "Error: Could not determine repository root. Please run this script from within the repository."
     exit 1
 }
 
+# Detect if git is available (used for branch creation; does NOT affect root resolution)
 try {
-    $repoRoot = git rev-parse --show-toplevel 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        $hasGit = $true
-    } else {
-        throw "Git not available"
-    }
+    git rev-parse --show-toplevel 2>$null | Out-Null
+    $hasGit = ($LASTEXITCODE -eq 0)
 } catch {
-    $repoRoot = $fallbackRoot
     $hasGit = $false
 }
 

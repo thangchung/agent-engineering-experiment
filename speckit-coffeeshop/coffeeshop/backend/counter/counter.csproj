@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>coffeeshop-counter</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.*-*" />
+    <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260219.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Hosting.AGUI.AspNetCore" Version="1.*-*" />
+    <PackageReference Include="Microsoft.Agents.Builder" Version="1.*-*" />
+    <PackageReference Include="Microsoft.Agents.Core" Version="1.*-*" />
+    <PackageReference Include="Microsoft.Agents.Hosting.AspNetCore" Version="1.*-*" />
+    <PackageReference Include="GitHub.Copilot.SDK" Version="0.1.25" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../servicedefaults/servicedefaults.csproj" />
+  </ItemGroup>
+
+</Project>

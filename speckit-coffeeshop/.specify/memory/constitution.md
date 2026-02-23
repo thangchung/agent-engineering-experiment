@@ -436,7 +436,7 @@ coffeeshop/
 - **Role**: App Host — single entry point for running and debugging the entire
   application (backend + frontend + any infrastructure resources) locally and
   for generating deployment manifests.
-- **Version**: .NET Aspire 9.x (ships with .NET 10 SDK)
+- **Version**: .NET Aspire 13.x (ships with .NET 10 SDK)
 - **Key capabilities used**:
   - Service registration & auto-configured service discovery
   - Named resource references (backend endpoint injected into frontend via

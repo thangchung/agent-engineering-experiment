@@ -1,0 +1,20 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/backend/">
+    <Project Path="backend/counter/counter.csproj" />
+    <Project Path="backend/product-catalog/product-catalog.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/integration/">
+    <Project Path="tests/integration/tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/unit/">
+    <Project Path="tests/unit/tests.csproj" />
+  </Folder>
+  <Project Path="apphost/apphost.csproj" />
+  <Project Path="servicedefaults/servicedefaults.csproj" />
+</Solution>
