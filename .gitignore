@@ -1,3 +1,4 @@
 .venv
 .olive-cache
 models
+.DS_Store
