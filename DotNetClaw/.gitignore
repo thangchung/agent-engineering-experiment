@@ -1,0 +1,52 @@
+# =============================================================================
+# .NET / C#
+# =============================================================================
+
+# Build output
+bin/
+obj/
+out/
+
+# Visual Studio / Rider
+.vs/
+*.user
+*.suo
+*.userprefs
+*.pidb
+*.sln.docstates
+.idea/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Publish output
+**/publish/
+**/PublishProfiles/
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage*/
+
+# Rider
+.idea/
+
+# .NET secrets & user config
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/.env.local
+
+settings.local.json
+
+# app
+**/memory.md

@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Aspire AppHost",
+      "type": "aspire",
+      "request": "launch",
+      "preLaunchTask": "build-apphost",
+      "program": "${workspaceFolder}/DotNetClaw.AppHost/DotNetClaw.AppHost.csproj",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  ]
+}
