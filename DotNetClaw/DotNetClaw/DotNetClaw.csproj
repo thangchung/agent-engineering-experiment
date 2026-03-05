@@ -18,10 +18,6 @@
     <!-- Bridge: CopilotClient.AsChatClient() → IChatClient for MAF -->
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260225.1" />
 
-    <!-- WhatsApp channel via Twilio -->
-    <PackageReference Include="Twilio" Version="7.*" />
-    <PackageReference Include="Twilio.AspNet.Core" Version="8.*" />
-
     <!-- Slack channel via SlackNet (Events API + request signature validation) -->
     <PackageReference Include="SlackNet" Version="0.17.9" />
     <PackageReference Include="SlackNet.AspNetCore" Version="0.17.9" />

@@ -77,6 +77,8 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
             int updateCount = 0;
             await foreach (var update in agent.RunStreamingAsync(message, session, null, ct))
             {
+                logger.LogDebug("[{Session}] RAW update #{N}: HasText={Has} Len={Len}",
+                    sessionId, updateCount + 1, !string.IsNullOrEmpty(update.Text), update.Text?.Length ?? 0);
                 if (!string.IsNullOrEmpty(update.Text))
                 {
                     result = update.Text;   // keep the last (most complete) update

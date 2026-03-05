@@ -1,9 +1,8 @@
 using DotNetClaw;
 using GitHub.Copilot.SDK;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Scalar.AspNetCore;
-using Twilio;
-using Twilio.AspNet.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +16,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<MindLoader>();
 
 // ============================================================================
-// 2. GITHUB COPILOT SDK + MAF BRIDGE → AIAgent
+// 2. MEMORY TOOLS — give the agent write-access to its working-memory files
+// ============================================================================
+builder.Services.AddSingleton<MemoryTool>(sp =>
+{
+    var mind   = sp.GetRequiredService<MindLoader>();
+    var mlogger = sp.GetRequiredService<ILogger<MemoryTool>>();
+    return new MemoryTool(mind.MindRoot, mlogger);
+});
+
+// ============================================================================
+// 3. GITHUB COPILOT SDK + MAF BRIDGE → AIAgent
 // ============================================================================
 // Microsoft.Agents.AI.GitHub.Copilot provides CopilotClient.AsAIAgent()
 // extension (in GitHub.Copilot.SDK namespace). Goes CopilotClient → AIAgent
@@ -33,7 +42,23 @@ builder.Services.AddSingleton<MindLoader>();
 builder.Services.AddSingleton<AIAgent>(sp =>
 {
     var mind          = sp.GetRequiredService<MindLoader>();
+    var memTool       = sp.GetRequiredService<MemoryTool>();
     var systemMessage = mind.LoadSystemMessageAsync().GetAwaiter().GetResult();
+
+    var tools = new List<AITool>
+    {
+        AIFunctionFactory.Create(memTool.AppendLogAsync),
+        AIFunctionFactory.Create(memTool.AddRuleAsync),
+        AIFunctionFactory.Create(memTool.SaveFactAsync),
+    };
+
+    // Log each registered tool so we can verify names at startup
+    var startupLog = sp.GetRequiredService<ILoggerFactory>().CreateLogger("DotNetClaw.Startup");
+    foreach (var tool in tools.OfType<AIFunction>())
+        startupLog.LogInformation("[Agent] Tool registered: {Name} — {Description}",
+            tool.Name,
+            (tool.Description ?? "").Length > 80 ? tool.Description![..80] + "…" : tool.Description ?? "");
+    startupLog.LogInformation("[Agent] Total tools: {Count}", tools.Count);
 
     var copilotClient = new CopilotClient(new CopilotClientOptions
     {
@@ -47,28 +72,12 @@ builder.Services.AddSingleton<AIAgent>(sp =>
         ownsClient:   true,
         id:           "dotnetclaw",
         name:         "DotNetClaw",
-        description:  "Personal AI assistant on WhatsApp and Slack",
-        tools:        null,
+        description:  "Personal AI assistant",
+        tools:        tools,
         instructions: systemMessage);
 });
 
 builder.Services.AddSingleton<ClawRuntime>();
-
-// ============================================================================
-// 3. WHATSAPP CHANNEL (Twilio)
-// ============================================================================
-// Set secrets: dotnet user-secrets set "Twilio:AccountSid" "ACxxx"
-//              dotnet user-secrets set "Twilio:AuthToken"  "xxx"
-
-var accountSid = builder.Configuration["Twilio:AccountSid"]
-    ?? throw new InvalidOperationException("Twilio:AccountSid not configured. Run: dotnet user-secrets set \"Twilio:AccountSid\" \"ACxxx\"");
-var authToken = builder.Configuration["Twilio:AuthToken"]
-    ?? throw new InvalidOperationException("Twilio:AuthToken not configured.");
-
-TwilioClient.Init(accountSid, authToken);
-builder.Services
-    .AddTwilioClient()
-    .AddTwilioRequestValidation();
 
 // ============================================================================
 // 4. SLACK CHANNEL (SlackNet Socket Mode)
@@ -81,6 +90,7 @@ builder.Services.AddSlackChannel(builder.Configuration);
 
 // ============================================================================
 // 5. OPENAPI
+
 // ============================================================================
 builder.Services.AddOpenApi();
 
@@ -99,9 +109,6 @@ if (app.Environment.IsDevelopment())
 
 // Health check
 app.MapGet("/", () => Results.Ok(new { name = "DotNetClaw", status = "running" }));
-
-// WhatsApp webhook — Twilio posts form-encoded messages here
-app.MapWhatsApp();
 
 // Slack events endpoint — UseSlackNet registers middleware + /slack/events route
 // Must be called on WebApplication (IApplicationBuilder), not IEndpointRouteBuilder
