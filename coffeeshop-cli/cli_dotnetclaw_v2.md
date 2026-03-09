@@ -85,19 +85,19 @@ are prefixed with `dotnet run --project <cli-path> --`.
 ### Available Commands
 
 **Customer & Account:**
-- `dotnet run -- models submit Customer --json` — lookup customer by email/ID
-  Input: `{"email": "alice@example.com"}` or `{"customer_id": "C-1001"}`
+- `dotnet run -- models query Customer --email <email> --json` — lookup customer by email
+  Example: `dotnet run -- models query Customer --email alice@example.com --json`
+- `dotnet run -- models query Customer --customer-id <id> --json` — lookup customer by ID
+  Example: `dotnet run -- models query Customer --customer-id C-1001 --json`
+- `dotnet run -- models browse Customer --json` — list all customers
 
 **Product Catalog:**
-- `dotnet run -- models show ItemType --json` — list all item types
-- `dotnet run -- models show MenuItem --json` — get items with prices
+- `dotnet run -- models browse MenuItem --json` — list all menu items with prices
 
 **Orders:**
-- `dotnet run -- models show Order --json --filter order_id=ORD-1001` — get order details
 - `dotnet run -- models submit Order --json` — create new order
   Input: `{"customer_id":"C-1001","items":[{"item_type":"LATTE","qty":2}]}`
-- `dotnet run -- models submit OrderUpdate --json` — update order status/notes
-  Input: `{"order_id":"ORD-1001","status":"confirmed","add_note":"..."}`
+  Returns: Complete order object with generated OrderId and status="Pending"
 
 For response phrasing, see assets/response-templates.md (inlined below in each step).
 
@@ -116,17 +116,19 @@ For response phrasing, see assets/response-templates.md (inlined below in each s
 Goal: Greet the customer and identify who they are.
 
 1. Extract identifiers from the customer's message (email, customer_id, order_id).
-2. IF email or customer_id provided:
-   - Call: `dotnet run -- models submit Customer --json`
-     with body `{"email":"<email>"}` or `{"customer_id":"<id>"}`
+2. IF email provided:
+   - Call: `dotnet run -- models query Customer --email <email> --json`
    - Store result as CUSTOMER.
-3. IF only order_id provided:
-   - Call: `dotnet run -- models show Order --json --filter order_id=<id>`
+3. IF customer_id provided:
+   - Call: `dotnet run -- models query Customer --customer-id <id> --json`
+   - Store result as CUSTOMER.
+4. IF only order_id provided:
+   - Display order status from local cache or ask agent to clarify.
    - Extract customer_id, then call lookup as above.
    - Store both CUSTOMER and ORDER.
-4. IF no identifier: ask the customer, wait, repeat step 1.
-5. IF lookup returns ok=false: ask customer to try again.
-6. Greet: "Hi {CUSTOMER.Name}, thanks for reaching out!"
+5. IF no identifier: ask the customer, wait, repeat step 1.
+6. IF lookup returns empty/error: ask customer to try again.
+7. Greet: "Hi {CUSTOMER.Name}, thanks for reaching out!"
 
 GOTO → STEP 2
 
@@ -138,10 +140,10 @@ Goal: Determine what the customer needs.
 2. Store in INTENT.
 
 Route:
-- **order-status**: Call `dotnet run -- models show Order --json --filter order_id=<id>`
-  Display order details. GOTO → STEP 2 (loop).
+- **order-status**: Lookup order_id from conversation context (coffeeshop-cli does not yet expose order queries).
+  Display order details from conversation memory. GOTO → STEP 2 (loop).
 - **account**: Display CUSTOMER details. GOTO → STEP 2 (loop).
-- **item-types**: Call `dotnet run -- models show ItemType --json`
+- **item-types**: Call `dotnet run -- models browse MenuItem --json`
   Display menu. GOTO → STEP 2 (loop).
 - **process-order**: GOTO → STEP 3.
 
@@ -150,7 +152,7 @@ Route:
 Goal: Build, price, and confirm the order.
 
 1. Extract items + quantities from conversation.
-2. Call: `dotnet run -- models show MenuItem --json`
+2. Call: `dotnet run -- models browse MenuItem --json`
    Get prices for selected items.
 3. Calculate total = sum(price × qty).
 4. Display summary:
@@ -169,11 +171,10 @@ Goal: Build, price, and confirm the order.
 Goal: Create order and confirm.
 
 1. Call: `dotnet run -- models submit Order --json`
-   Body: `{"customer_id":"<CUSTOMER.CustomerId>","items":[{"item_type":"LATTE","qty":2,"price":4.50},...],"total":12.25}`
-   Store result (includes OrderId).
-2. Call: `dotnet run -- models submit OrderUpdate --json`
-   Body: `{"order_id":"<ORDER.OrderId>","status":"confirmed","add_note":"Order confirmed by customer"}`
-3. Display: "Order {ORDER.OrderId} confirmed! ☕ Estimated pickup: 5-10 min (beverages) / 10-15 min (with food)."
+   Body: `{"customer_id":"<CUSTOMER.CustomerId>","items":[{"item_type":"LATTE","qty":2}]}`
+   Note: Price and total are auto-calculated. OrderId is auto-generated.
+   Store result (includes OrderId, Status=Pending, Total).
+2. Display: "Order {ORDER.OrderId} created! ☕ Total: ${ORDER.Total}. Estimated pickup: 5-10 min (beverages) / 10-15 min (with food)."
 
 GOTO → END
 ```

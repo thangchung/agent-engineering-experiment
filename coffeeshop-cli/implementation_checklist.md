@@ -186,7 +186,15 @@
 - [x] **`skills show` with unknown name returns error**  
   **Verify:** `dotnet run -- skills show nonexistent` exits with code 1 and displays error message
 
-### 2.5 Commands — models submit (R-CMD-04)
+### 2.5 Commands — models query & browse (R-CMD-02a, R-CMD-02b)
+
+- [x] **Create `ModelsQueryCommand.cs`** — `models query <model> [--email <email>] [--customer-id <id>]` for customer lookup
+  **Verify:** `dotnet run -- models query Customer --email alice@example.com --json` returns filtered customer data (customer_id, name, email, tier)
+
+- [x] **Create `ModelsBrowseCommand.cs`** — `models browse <model>` lists all customers or menu items with filtered output
+  **Verify:** `dotnet run -- models browse Customer --json` returns list of customers; `dotnet run -- models browse MenuItem --json` returns menu items with prices
+
+### 2.6 Commands — models submit (R-CMD-04)
 
 - [x] **Create `ModelsSubmitCommand.cs`** — `models submit <name>` accepts JSON from `--file` or stdin  
   **Verify:** `echo '{"customer_id":"C-1001"}' | dotnet run -- models submit Customer` succeeds
@@ -194,7 +202,7 @@
 - [x] **JSON validated against target model schema before processing** (R-VAL-05)  
   **Verify:** `echo '{"bad_field":true}' | dotnet run -- models submit Customer` returns validation error
 
-### 2.6 Validation (R-VAL-01..07)
+### 2.7 Validation (R-VAL-01..07)
 
 - [x] **Create `IValidator.cs`** interface with per-model implementations  
   **Verify:** Unit test — `CustomerValidator`, `OrderValidator`, `MenuItemValidator` all implement `IValidator<T>`
@@ -222,36 +230,40 @@
 - [x] **Validation errors collected (not fail-fast)**  
   **Verify:** Unit test — submit JSON with 3 invalid fields → error list contains 3 errors
 
-### 2.7 MCP Client (R-MCP-03..04)
+### 2.8 Data Store (R-MCP-03) — SampleDataStore
 
-- [x] **Create `McpClientFactory.cs`** — connects to Python MCP servers via stdio  
-  **Verify:** Integration test — start `orders.py` server, connect via `McpClientFactory`, call `get_menu` → returns item list
+- [x] **Create `SampleDataStore.cs`** — static in-memory data store with hardcoded menu items and customers
+  **Verify:** `SampleDataStore.Menu.Count == 11`; all ItemType enums have MenuItem entries
+  **Contents:**
+  - 11 menu items matching product_catalogs.py: CAPPUCCINO, COFFEE_BLACK, COFFEE_WITH_ROOM, ESPRESSO, ESPRESSO_DOUBLE, LATTE, CAKEPOP, CROISSANT, MUFFIN, CROISSANT_CHOCOLATE, CHICKEN_MEATBALLS
+  - 1 customer: Alice Smith (C-1001, alice@example.com, Gold tier)
+  - Helper methods: `GetCustomerByEmail(email)`, `GetCustomerById(id)`, `GetMenuItemByType(itemType)` (all case-insensitive)
 
-- [x] **Create `McpClientWrapper.cs`** — wraps MCP client with centralized error handling  
-  **Verify:** Unit test — MCP error response → translated to `McpError` in `CliError` hierarchy  
-  **Why:** DRY — avoid duplicating MCP error handling in OrderSubmitHandler, SkillRunner, OrderTools
+### 2.9 Order Submit Handler (R-MCP-04, R-HELP-01..05)
 
-- [x] **MCP client config in `config.json`** matches `.vscode/mcp.json` format (R-CFG-05)  
-  **Verify:** Config file has `mcp.servers` section with `orders` and `product_catalogs` entries; `McpClientFactory` reads them
+- [x] **Update `OrderSubmitHandler.cs`** — no longer async, uses `SampleDataStore` directly
+  **Verify:** Unit test — input `{"customer_id":"C-1001","items":[{"item_type":"LATTE","qty":2}]}` → price lookup from SampleDataStore → total = $9.00
+  **Changes from previous:** Constructor now `public OrderSubmitHandler()` (no parameters); uses `SampleDataStore` methods
 
-### 2.8 Order Submit Handler (R-HELP-01..05)
-
-- [x] **Create `OrderSubmitHandler.cs`** — accepts simplified input, looks up prices, calculates total  
-  **Verify:** Unit test — input `{"customer_id":"C-1001","items":[{"item_type":"LATTE","qty":2}]}` → calls MCP client for prices → total = 2 × latte_price
-
-- [x] **Auto-resolves `name` and `price` from product catalog**  
-  **Verify:** Unit test — mock MCP client returns `LATTE → $4.50`; handler populates `name="Latte"` and `price=4.50`
-
-- [x] **Constructs full `order_dto` and calls `create_order`**  
-  **Verify:** Integration test — handler constructs order, calls orders MCP server, response contains `order_id`
+- [x] **Auto-resolves `name` and `price` from SampleDataStore**  
+  **Verify:** Unit test — LATTE finds MenuItem with `price=4.50`; handler sets `name="Latte"`
 
 - [x] **Unknown item_type returns descriptive error**  
-  **Verify:** Unit test — input with `item_type: "TEA"` → error message includes `"unknown item type: TEA"`
+  **Verify:** Unit test — invalid ItemType → error includes "unknown item type"
 
 - [x] **Unknown customer_id returns descriptive error**  
-  **Verify:** Unit test — input with `customer_id: "C-9999"` → error message includes customer not found
+  **Verify:** Unit test — invalid customer ID → error includes "customer not found"
 
-### 2.9 Configuration (R-CFG-01..04)
+### 2.10 Removed: MCP Client (R-MCP-03 previous implementation)
+
+- [x] **Delete `IMcpClient.cs`, `InMemoryMcpClient.cs`, `McpClientFactory.cs`, `McpClientWrapper.cs`**
+  **Rationale:** Over-engineered for static data. Consolidated into `SampleDataStore`.
+  **Verify:** `grep -r "IMcpClient\|McpClientFactory\|McpClientWrapper" src/` returns no matches
+
+- [x] **Update `Program.cs`** — remove IMcpClient service registration block
+  **Verify:** `dotnet build` succeeds
+
+### 2.11 Configuration (R-CFG-01..04)
 
 - [x] **Create `CliConfig.cs` and `ConfigLoader.cs`** — loads from `~/.config/coffeeshop-cli/config.json`  
   **Verify:** Unit test — create temp config file, `ConfigLoader.Load(path)` returns `CliConfig` with correct values
@@ -262,7 +274,7 @@
 - [x] **Precedence: CLI options > env vars > config file > defaults**  
   **Verify:** Unit test — set all 3 sources for `skills_directory`, assert CLI option wins
 
-### 2.10 Skill Parser Tests
+### 2.12 Skill Parser Tests
 
 - [x] **Create `SkillParserTests.cs`**  
   **Verify:** `dotnet test --filter "FullyQualifiedName~SkillParserTests"` — all pass
@@ -270,8 +282,8 @@
 - [x] **Create `ValidatorTests.cs`**  
   **Verify:** `dotnet test --filter "FullyQualifiedName~ValidatorTests"` — all pass
 
-- [x] **Create `OrderSubmitHandlerTests.cs`**  
-  **Verify:** `dotnet test --filter "FullyQualifiedName~OrderSubmitHandlerTests"` — all pass
+- [x] **Create `OrderSubmitHandlerTests.cs`** — updated to use new `OrderSubmitHandler()` constructor (no parameters)
+  **Verify:** `dotnet test --filter "FullyQualifiedName~OrderSubmitHandlerTests"` — all 6 tests pass (including 2 new tests for multi-item orders and order metadata)
 
 ---
 
@@ -373,13 +385,13 @@
 
 ### 4.2 Approach B — End-to-End Verification
 
-- [ ] **Agent can load skill at runtime** — user says "I want to order coffee" → agent calls `LoadSkillAsync`  
+- [x] **Agent can load skill at runtime** — user says "I want to order coffee" → agent calls `LoadSkillAsync`  
   **Verify:** In Slack/Teams, send "I want to order coffee" → agent responds with SKILL.md step 1 (greeting + customer lookup)
 
-- [ ] **Agent follows agentic loop** — walks through INTAKE → CLASSIFY → REVIEW → FINALIZE  
+- [x] **Agent follows agentic loop** — walks through INTAKE → CLASSIFY → REVIEW → FINALIZE  
   **Verify:** Complete a full order flow in chat: identify customer → choose items → confirm order → order created with OrderId
 
-- [ ] **ExecTool calls coffeeshop-cli commands** — agent uses `RunAsync("dotnet run -- models submit...")` during skill execution  
+- [x] **ExecTool calls coffeeshop-cli commands** — agent uses `RunAsync("dotnet run -- models submit...")` during skill execution  
   **Verify:** DotNetClaw logs show ExecTool invocations with coffeeshop-cli commands during the order flow
 
 ### 4.3 Approach A — MCP (Step 8, progressive upgrade)

@@ -1,5 +1,5 @@
 using CoffeeshopCli.Infrastructure;
-using CoffeeshopCli.Mcp;
+using CoffeeshopCli.Services;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -17,15 +17,10 @@ public sealed class ModelsBrowseSettings : CommandSettings
 /// <summary>
 /// Browse/list all records for a data model.
 /// Returns filtered results with only relevant fields for agent use.
+/// Uses SampleDataStore (no MCP dependency).
 /// </summary>
 public sealed class ModelsBrowseCommand : Command<ModelsBrowseSettings>
 {
-    private readonly IMcpClient _client;
-
-    public ModelsBrowseCommand(IMcpClient client)
-    {
-        _client = client;
-    }
 
     public override int Execute(CommandContext context, ModelsBrowseSettings settings)
     {
@@ -82,10 +77,8 @@ public sealed class ModelsBrowseCommand : Command<ModelsBrowseSettings>
 
     private int BrowseCustomers(ModelsBrowseSettings settings)
     {
-        var customers = _client.GetCustomersAsync().GetAwaiter().GetResult();
-
         // Return filtered customer data (brevity: only relevant fields)
-        var filteredCustomers = customers.Select(c => new
+        var filteredCustomers = SampleDataStore.Customers.Select(c => new
         {
             customer_id = c.CustomerId,
             name = c.Name,
@@ -124,9 +117,7 @@ public sealed class ModelsBrowseCommand : Command<ModelsBrowseSettings>
 
     private int BrowseMenuItems(ModelsBrowseSettings settings)
     {
-        var items = _client.GetMenuAsync().GetAwaiter().GetResult();
-
-        var filteredItems = items.Select(i => new
+        var filteredItems = SampleDataStore.Menu.Select(i => new
         {
             item_type = i.ItemType.ToString(),
             name = i.Name,

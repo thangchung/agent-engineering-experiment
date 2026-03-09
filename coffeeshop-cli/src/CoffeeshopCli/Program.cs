@@ -20,11 +20,6 @@ services.AddSingleton<IDiscoveryService>(sp =>
     var config = ConfigLoader.Load();
     return new FileSystemDiscoveryService(registry, config.Discovery.SkillsDirectory);
 });
-services.AddSingleton<IMcpClient>(sp =>
-{
-    var config = ConfigLoader.Load();
-    return new McpClientWrapper(McpClientFactory.Create(config));
-});
 services.AddSingleton<SkillRunner>();
 services.AddSingleton<ModelTools>();
 services.AddSingleton<SkillTools>();

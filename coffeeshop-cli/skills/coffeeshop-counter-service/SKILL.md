@@ -37,11 +37,9 @@ are prefixed with `dotnet run --project <cli-path> --`.
 - `dotnet run -- models browse MenuItem --json` — list all menu items with prices
 
 **Orders:**
-- `dotnet run -- models show Order --json --filter order_id=ORD-1001` — get order details
 - `dotnet run -- models submit Order --json` — create new order
   Input: `{"customer_id":"C-1001","items":[{"item_type":"LATTE","qty":2}]}`
-- `dotnet run -- models submit OrderUpdate --json` — update order status/notes
-  Input: `{"order_id":"ORD-1001","status":"confirmed","add_note":"..."}`
+  Returns: Complete order object with generated OrderId, Status=Pending, and calculated Total
 
 ## Agentic Loop
 
@@ -107,8 +105,10 @@ Goal: Build, price, and confirm the order.
 
 Goal: Create order and confirm.
 
-1. Call command to create order with order data.
-2. Call command to update order status to "confirmed".
-3. Display: "Order {ORDER.OrderId} confirmed! ☕ Estimated pickup: 5-10 min (beverages) / 10-15 min (with food)."
+1. Call: `dotnet run -- models submit Order --json`
+   Body: `{"customer_id":"<CUSTOMER.CustomerId>","items":[{"item_type":"LATTE","qty":2}]}`
+   Note: OrderId is auto-generated. Prices and total are auto-calculated. Status is set to Pending.
+   Store result ORDER (includes OrderId, Total, Status).
+2. Display: "Order {ORDER.OrderId} created! ☕ Total: ${ORDER.Total}. Estimated pickup: 5-10 min (beverages) / 10-15 min (with food)."
 
 GOTO → END

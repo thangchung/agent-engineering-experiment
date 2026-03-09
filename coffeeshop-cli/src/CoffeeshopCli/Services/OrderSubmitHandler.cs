@@ -1,5 +1,4 @@
 using CoffeeshopCli.Errors;
-using CoffeeshopCli.Mcp;
 using CoffeeshopCli.Models;
 using CoffeeshopCli.Validation;
 
@@ -7,28 +6,26 @@ namespace CoffeeshopCli.Services;
 
 /// <summary>
 /// Handles simplified order submission by resolving item names/prices and calculating totals.
+/// Uses SampleDataStore for menu and customer data (no MCP dependency).
 /// </summary>
 public sealed class OrderSubmitHandler
 {
-    private readonly IMcpClient _mcpClient;
     private readonly OrderValidator _orderValidator;
 
-    public OrderSubmitHandler(IMcpClient mcpClient)
+    public OrderSubmitHandler()
     {
-        _mcpClient = mcpClient;
         _orderValidator = new OrderValidator();
     }
 
-    public async Task<Order> SubmitAsync(SimplifiedOrderInput input, CancellationToken cancellationToken = default)
+    public Task<Order> SubmitAsync(SimplifiedOrderInput input, CancellationToken cancellationToken = default)
     {
-        var customers = await _mcpClient.GetCustomersAsync(cancellationToken);
-        var customer = customers.FirstOrDefault(c => c.CustomerId.Equals(input.CustomerId, StringComparison.OrdinalIgnoreCase));
+        var customer = SampleDataStore.GetCustomerById(input.CustomerId);
         if (customer is null)
         {
             throw new ValidationError($"unknown customer id: {input.CustomerId}");
         }
 
-        var menu = await _mcpClient.GetMenuAsync(cancellationToken);
+        var menu = SampleDataStore.Menu;
 
         var orderItems = new List<OrderItem>();
         foreach (var item in input.Items)
@@ -67,7 +64,7 @@ public sealed class OrderSubmitHandler
             throw validationError;
         }
 
-        return await _mcpClient.CreateOrderAsync(order, cancellationToken);
+        return Task.FromResult(order);
     }
 
     private static string GenerateOrderId()

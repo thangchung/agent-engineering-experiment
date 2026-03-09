@@ -1,7 +1,5 @@
-using CoffeeshopCli.Configuration;
 using CoffeeshopCli.Infrastructure;
-using CoffeeshopCli.Mcp;
-using CoffeeshopCli.Models;
+using CoffeeshopCli.Services;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -28,16 +26,10 @@ public sealed class ModelsQuerySettings : CommandSettings
 /// <summary>
 /// Query data records by filters (email, customer_id, order_id).
 /// Returns filtered results with only relevant fields for agent use.
+/// Uses SampleDataStore (no MCP dependency).
 /// </summary>
 public sealed class ModelsQueryCommand : Command<ModelsQuerySettings>
 {
-    private readonly IMcpClient _client;
-
-    public ModelsQueryCommand(IMcpClient client)
-    {
-        _client = client;
-    }
-
     public override int Execute(CommandContext context, ModelsQuerySettings settings)
     {
         try
@@ -108,19 +100,9 @@ public sealed class ModelsQueryCommand : Command<ModelsQuerySettings>
             return 1;
         }
 
-        var customers = _client.GetCustomersAsync().GetAwaiter().GetResult();
-        Customer? found = null;
-
-        if (!string.IsNullOrEmpty(settings.Email))
-        {
-            found = customers.FirstOrDefault(c =>
-                c.Email.Equals(settings.Email, StringComparison.OrdinalIgnoreCase));
-        }
-        else if (!string.IsNullOrEmpty(settings.CustomerId))
-        {
-            found = customers.FirstOrDefault(c =>
-                c.CustomerId.Equals(settings.CustomerId, StringComparison.OrdinalIgnoreCase));
-        }
+        var found = !string.IsNullOrEmpty(settings.Email)
+            ? SampleDataStore.GetCustomerByEmail(settings.Email)
+            : SampleDataStore.GetCustomerById(settings.CustomerId!);
 
         if (found is null)
         {

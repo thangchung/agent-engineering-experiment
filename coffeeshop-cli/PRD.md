@@ -22,7 +22,7 @@ coffeeshop-cli is **not** a channel for DotNetClaw (the multi-channel agent runt
 - Discover and invoke agent skills defined in `SKILL.md` manifests
 - Accept and validate hierarchical JSON payloads for order submission
 - Expose all capabilities as MCP tools over stdio transport
-- Act as an MCP client to call the Python-based coffeeshop MCP servers
+- Query and browse mock customer and menu data via dedicated commands
 - Support dual output: interactive TUI (default) and machine-readable JSON (`--json`)
 
 ### Non-Goals
@@ -71,6 +71,8 @@ coffeeshop-cli is **not** a channel for DotNetClaw (the multi-channel agent runt
 |---|---|---|
 | R-CMD-01 | Root command tree: `models`, `skills`, `mcp`, `docs` branches registered via `AddBranch` | P0 |
 | R-CMD-02 | `models list` — list all discovered data models as a Spectre Table | P0 |
+| R-CMD-02a | `models query <model> [--email <email>] [--customer-id <id>]` — query specific customers by email or ID | P0 |
+| R-CMD-02b | `models browse <model>` — list all customers or menu items with filtered output | P0 |
 | R-CMD-03 | `models show <name>` — display model schema (properties, types, validation rules) as a Spectre Tree | P0 |
 | R-CMD-04 | `models submit <name>` — accept JSON from stdin or `--file` and validate against the model | P0 |
 | R-CMD-05 | `skills list` — list all discovered skills as a Spectre Table | P0 |
@@ -160,8 +162,8 @@ coffeeshop-cli is **not** a channel for DotNetClaw (the multi-channel agent runt
 |---|---|---|
 | R-MCP-01 | `mcp serve` starts an MCP server over stdio transport using `ModelContextProtocol` NuGet package | P1 |
 | R-MCP-02 | MCP server exposes tools that mirror CLI commands: model listing, model show, skill listing, order submission | P1 |
-| R-MCP-03 | MCP client connects to configured Python MCP servers (orders, product_catalogs) via stdio | P1 |
-| R-MCP-04 | MCP client is used by `OrderSubmitHandler` and `SkillRunner` to call upstream tools | P1 |
+| R-MCP-03 | Data is provided by `SampleDataStore` — static in-memory store with 11 menu items and 1 customer (Alice Smith, C-1001) | P1 |
+| R-MCP-04 | `OrderSubmitHandler` uses `SampleDataStore` directly for price lookup and order construction (non-async) | P1 |
 | R-MCP-05 | MCP tool definitions include proper annotations (`readOnlyHint` for read-only tools) | P2 |
 
 ---
@@ -205,6 +207,12 @@ coffeeshop-cli is **not** a channel for DotNetClaw (the multi-channel agent runt
   │  └──────────────────────────────────┘    │
   │                                          │
   │  ┌──────────────────────────────────┐    │
+  │  │      SampleDataStore             │    │
+  │  │  (11 menu items, customers)      │    │
+  │  │  Static hardcoded data source    │    │
+  │  └──────────────────────────────────┘    │
+  │                                          │
+  │  ┌──────────────────────────────────┐    │
   │  │      OrderSubmitHandler          │    │
   │  │  (price lookup, total calc,      │    │
   │  │   order_dto construction)        │    │
@@ -213,12 +221,7 @@ coffeeshop-cli is **not** a channel for DotNetClaw (the multi-channel agent runt
   │  ┌──────────────────────────────────┐    │
   │  │      SkillRunner                 │    │
   │  │  (agentic loop orchestration)    │    │
-  │  └──────────────────────────────────┘    │
-  │                                          │
-  │  ┌──────────────────────────────────┐    │
-  │  │      MCP Client                  │────┼──► Python MCP Servers (stdio)
-  │  │  (calls upstream servers)        │    │    ├─ orders.py
-  │  └──────────────────────────────────┘    │    └─ product_catalogs.py
+  │  └──────────────────────────────────┘
   │                                          │
   │  ┌──────────────────────────────────┐    │
   │  │      MCP Server                  │◄───┼──── External AI Agents (stdio)
@@ -231,7 +234,7 @@ coffeeshop-cli is **not** a channel for DotNetClaw (the multi-channel agent runt
 
 ## 6. Domain Data Models
 
-These models are derived from the canonical Python MCP servers in `agent-skills-coffeeshop/mcp/`.
+These models are defined as C# records. Sample data for Customer and MenuItem is stored in `SampleDataStore` — a static class with 11 menu items (from product_catalogs.py schema) and 1 customer for testing.
 
 ### 6.1 Customer
 

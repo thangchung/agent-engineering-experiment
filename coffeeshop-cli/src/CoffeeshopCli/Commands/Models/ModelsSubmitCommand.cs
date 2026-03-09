@@ -130,9 +130,7 @@ public sealed class ModelsSubmitCommand : Command<ModelsSubmitSettings>
                     throw new ValidationError("Failed to deserialize simplified order input");
                 }
 
-                var config = ConfigLoader.Load();
-                var client = new McpClientWrapper(McpClientFactory.Create(config));
-                var handler = new OrderSubmitHandler(client);
+                var handler = new OrderSubmitHandler();
                 var submittedOrder = handler.SubmitAsync(input).GetAwaiter().GetResult();
 
                 if (settings.Json)
