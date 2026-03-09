@@ -80,22 +80,22 @@ You are a counter service agent. Follow the Agentic Loop below exactly.
 ## Setup
 
 This skill uses coffeeshop-cli commands with `--json` output. All commands
-are prefixed with `dotnet run --project <cli-path> --`.
+are invoked using the Coffeeshop-Cli command.
 
 ### Available Commands
 
 **Customer & Account:**
-- `dotnet run -- models query Customer --email <email> --json` — lookup customer by email
-  Example: `dotnet run -- models query Customer --email alice@example.com --json`
-- `dotnet run -- models query Customer --customer-id <id> --json` — lookup customer by ID
-  Example: `dotnet run -- models query Customer --customer-id C-1001 --json`
-- `dotnet run -- models browse Customer --json` — list all customers
+- `Coffeeshop-Cli models query Customer --email <email> --json` — lookup customer by email
+  Example: `Coffeeshop-Cli models query Customer --email alice@example.com --json`
+- `Coffeeshop-Cli models query Customer --customer-id <id> --json` — lookup customer by ID
+  Example: `Coffeeshop-Cli models query Customer --customer-id C-1001 --json`
+- `Coffeeshop-Cli models browse Customer --json` — list all customers
 
 **Product Catalog:**
-- `dotnet run -- models browse MenuItem --json` — list all menu items with prices
+- `Coffeeshop-Cli models browse MenuItem --json` — list all menu items with prices
 
 **Orders:**
-- `dotnet run -- models submit Order --json` — create new order
+- `Coffeeshop-Cli models submit Order --json` — create new order
   Input: `{"customer_id":"C-1001","items":[{"item_type":"LATTE","qty":2}]}`
   Returns: Complete order object with generated OrderId and status="Pending"
 
@@ -117,10 +117,10 @@ Goal: Greet the customer and identify who they are.
 
 1. Extract identifiers from the customer's message (email, customer_id, order_id).
 2. IF email provided:
-   - Call: `dotnet run -- models query Customer --email <email> --json`
+   - Call: `Coffeeshop-Cli models query Customer --email <email> --json`
    - Store result as CUSTOMER.
 3. IF customer_id provided:
-   - Call: `dotnet run -- models query Customer --customer-id <id> --json`
+   - Call: `Coffeeshop-Cli models query Customer --customer-id <id> --json`
    - Store result as CUSTOMER.
 4. IF only order_id provided:
    - Display order status from local cache or ask agent to clarify.
@@ -143,7 +143,7 @@ Route:
 - **order-status**: Lookup order_id from conversation context (coffeeshop-cli does not yet expose order queries).
   Display order details from conversation memory. GOTO → STEP 2 (loop).
 - **account**: Display CUSTOMER details. GOTO → STEP 2 (loop).
-- **item-types**: Call `dotnet run -- models browse MenuItem --json`
+- **item-types**: Call `Coffeeshop-Cli models browse MenuItem --json`
   Display menu. GOTO → STEP 2 (loop).
 - **process-order**: GOTO → STEP 3.
 
@@ -152,7 +152,7 @@ Route:
 Goal: Build, price, and confirm the order.
 
 1. Extract items + quantities from conversation.
-2. Call: `dotnet run -- models browse MenuItem --json`
+2. Call: `Coffeeshop-Cli models browse MenuItem --json`
    Get prices for selected items.
 3. Calculate total = sum(price × qty).
 4. Display summary:
@@ -170,7 +170,7 @@ Goal: Build, price, and confirm the order.
 
 Goal: Create order and confirm.
 
-1. Call: `dotnet run -- models submit Order --json`
+1. Call: `Coffeeshop-Cli models submit Order --json`
    Body: `{"customer_id":"<CUSTOMER.CustomerId>","items":[{"item_type":"LATTE","qty":2}]}`
    Note: Price and total are auto-calculated. OrderId is auto-generated.
    Store result (includes OrderId, Status=Pending, Total).
@@ -182,7 +182,7 @@ GOTO → END
 **Key differences from original:**
 - Removed `allowed-tools: mcp__orders__* mcp__product_items__*`
 - Removed `open_order_form` (MCP Apps UI) — agent constructs order JSON directly
-- All tool calls → `dotnet run -- <command> --json`
+- All tool calls → `Coffeeshop-Cli <command> --json`
 - Version bumped `3.1` → `3.2`
 - Response templates inlined into step instructions
 
@@ -247,7 +247,7 @@ public class FileSystemDiscoveryService : IDiscoveryService
 
 **Workflow:**
 ```
-$ dotnet run -- skills list --json
+$ Coffeeshop-Cli skills list --json
                 │
   SkillsListCommand.ExecuteAsync()
                 │
@@ -404,7 +404,7 @@ public sealed class SkillsListCommand : Command<SkillsListSettings>
 
 **Workflow:**
 ```
-$ dotnet run -- skills show coffeeshop-counter-service --json
+$ Coffeeshop-Cli skills show coffeeshop-counter-service --json
                 │
   SkillsShowCommand.ExecuteAsync()
                 │
@@ -615,7 +615,7 @@ DotNetClaw Startup (revised)
 1. Register ExecTool
 
 2. At startup, discover skills via exec:
-   ExecTool.RunAsync("dotnet run --project ../coffeeshop-cli -- skills list --json")
+   ExecTool.RunAsync("Coffeeshop-Cli skills list --json")
    ──spawn──► coffeeshop-cli → returns JSON skill catalog
    Result: [{ name: "coffeeshop-counter-service", description: "...", ... }]
 
@@ -633,12 +633,12 @@ Runtime (Progressive Disclosure)
    → calls load_skill("coffeeshop-counter-service")
 
 8. SkillLoaderTool.LoadAsync("coffeeshop-counter-service")
-   → ExecTool.RunAsync("dotnet run --project ../coffeeshop-cli -- skills show coffeeshop-counter-service --json")
+   → ExecTool.RunAsync("Coffeeshop-Cli skills show coffeeshop-counter-service --json")
    → returns { frontmatter: {...}, body: "# Coffee Shop Order..." }
    → agent receives full agentic loop instructions
 
 9. Agent follows STEP 1 — INTAKE
-   → ExecTool.RunAsync("dotnet run --project ../coffeeshop-cli -- models submit Customer --json")
+   → ExecTool.RunAsync("Coffeeshop-Cli models submit Customer --json")
    → coffeeshop-cli → Python MCP server → { name: "Alice", tier: "Gold" }
 
 10. Agent follows STEP 2 — CLASSIFY INTENT
@@ -646,11 +646,11 @@ Runtime (Progressive Disclosure)
     → INTENT = process-order
 
 11. Agent follows STEP 3 — REVIEW
-    → ExecTool.RunAsync("dotnet run --project ../coffeeshop-cli -- models show MenuItem --json")
+    → ExecTool.RunAsync("Coffeeshop-Cli models show MenuItem --json")
     → prices resolved, summary shown
 
 12. Agent follows STEP 4 — FINALIZE
-    → ExecTool.RunAsync("dotnet run --project ../coffeeshop-cli -- models submit Order --json")
+    → ExecTool.RunAsync("Coffeeshop-Cli models submit Order --json")
     → Order ORD-1004 created, status confirmed
 ```
 
@@ -853,7 +853,7 @@ DotNetClaw (MCP Client)                 coffeeshop-cli (MCP Server)
 McpToolLoader.LoadAsync()
   │
   ├─ connects to coffeeshop-cli via stdio
-  │   `dotnet run --project ../coffeeshop-cli -- mcp serve`
+  │   `Coffeeshop-Cli mcp serve`
   │
   ├─ ListToolsAsync() discovers 11 tools:
   │   ├─ list_models, show_model           (ModelTools)
@@ -990,9 +990,9 @@ coffeeshop-cli/src/CoffeeshopCli/Mcp/Tools/
 
 ## Verification
 
-1. `dotnet run -- skills list --json` → `[{ "name": "coffeeshop-counter-service", ... }]`
-2. `dotnet run -- skills show coffeeshop-counter-service --json` → full manifest with body
-3. `dotnet run -- mcp serve` → MCP client discovers `list_skills` + `show_skill`
+1. `Coffeeshop-Cli skills list --json` → `[{ "name": "coffeeshop-counter-service", ... }]`
+2. `Coffeeshop-Cli skills show coffeeshop-counter-service --json` → full manifest with body
+3. `Coffeeshop-Cli mcp serve` → MCP client discovers `list_skills` + `show_skill`
 4. DotNetClaw startup logs: `[Skills] Discovered 1 skills` + `[Agent] Tool: LoadSkillAsync`
 5. Slack: "I want to order coffee" → agent loads skill → follows 4-step loop → order created
 
@@ -1001,7 +1001,7 @@ coffeeshop-cli/src/CoffeeshopCli/Mcp/Tools/
 1. **Single source of truth** — SKILL.md lives in coffeeshop-cli only
 2. **Progressive consumption** — ExecTool first, MCP later
 3. **FileAgentSkillsProvider removed** — replaced by ExecTool + SkillLoaderTool
-4. **CLI commands as tool surface** — SKILL.md references `dotnet run -- <command> --json`
+4. **CLI commands as tool surface** — SKILL.md references `Coffeeshop-Cli <command> --json`
 5. **Original preserved** — agent-skills-coffeeshop SKILL.md untouched
 6. **OpenClaw aligned** — same skill location works for DotNetClaw and OpenClaw
 

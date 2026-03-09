@@ -1,5 +1,3 @@
-using CoffeeshopCli.Models;
-
 namespace CoffeeshopCli.Services;
 
 /// <summary>
@@ -40,6 +38,19 @@ public sealed class FileSystemDiscoveryService : IDiscoveryService
 
     public IReadOnlyList<SkillInfo> DiscoverSkills()
     {
+        var parser = new SkillParser();
+        var filesystemSkills = DiscoverSkillsFromFileSystem(parser);
+
+        if (filesystemSkills.Count > 0)
+        {
+            return filesystemSkills;
+        }
+
+        return DiscoverSkillsFromEmbeddedResources(parser);
+    }
+
+    private List<SkillInfo> DiscoverSkillsFromFileSystem(SkillParser parser)
+    {
         var skills = new List<SkillInfo>();
 
         if (!Directory.Exists(_skillsDirectory))
@@ -48,7 +59,6 @@ public sealed class FileSystemDiscoveryService : IDiscoveryService
         }
 
         // Scan for */SKILL.md files
-        var parser = new SkillParser();
         foreach (var skillDir in Directory.GetDirectories(_skillsDirectory))
         {
             var skillFile = Path.Combine(skillDir, "SKILL.md");
@@ -66,12 +76,56 @@ public sealed class FileSystemDiscoveryService : IDiscoveryService
                     Version = manifest.Frontmatter.Metadata.Version,
                     Category = manifest.Frontmatter.Metadata.Category,
                     LoopType = manifest.Frontmatter.Metadata.LoopType,
-                    Path = skillFile
+                    Path = skillFile,
+                    Content = null
                 });
             }
             catch
             {
                 // Skip malformed SKILL.md files
+                continue;
+            }
+        }
+
+        return skills;
+    }
+
+    private static List<SkillInfo> DiscoverSkillsFromEmbeddedResources(SkillParser parser)
+    {
+        var skills = new List<SkillInfo>();
+        var assembly = typeof(FileSystemDiscoveryService).Assembly;
+
+        var resourceNames = assembly.GetManifestResourceNames()
+            .Where(name => name.EndsWith(".SKILL.md", StringComparison.OrdinalIgnoreCase));
+
+        foreach (var resourceName in resourceNames)
+        {
+            try
+            {
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream is null)
+                {
+                    continue;
+                }
+
+                using var reader = new StreamReader(stream);
+                var content = reader.ReadToEnd();
+                var manifest = parser.Parse(content);
+
+                skills.Add(new SkillInfo
+                {
+                    Name = manifest.Frontmatter.Name,
+                    Description = manifest.Frontmatter.Description,
+                    Version = manifest.Frontmatter.Metadata.Version,
+                    Category = manifest.Frontmatter.Metadata.Category,
+                    LoopType = manifest.Frontmatter.Metadata.LoopType,
+                    Path = $"embedded://{resourceName}",
+                    Content = content
+                });
+            }
+            catch
+            {
+                // Skip malformed embedded SKILL.md resources.
                 continue;
             }
         }

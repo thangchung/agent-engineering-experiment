@@ -57,7 +57,7 @@ public sealed class SkillsShowCommand : Command<SkillsShowSettings>
             return 1; // Validation error
         }
 
-        var content = File.ReadAllText(skill.Path);
+        var content = skill.Content ?? File.ReadAllText(skill.Path);
         var manifest = new SkillParser().Parse(content);
 
         if (settings.Json)

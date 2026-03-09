@@ -22,22 +22,22 @@ You are a counter service agent. Follow the Agentic Loop below exactly.
 ## Setup
 
 This skill uses coffeeshop-cli commands with `--json` output. All commands
-are prefixed with `dotnet run --project <cli-path> --`.
+are invoked using the Coffeeshop-Cli command.
 
 ### Available Commands
 
 **Customer & Account:**
-- `dotnet run -- models query Customer --email <email> --json` — lookup customer by email
-  Example: `dotnet run -- models query Customer --email alice@example.com --json`
-- `dotnet run -- models query Customer --customer-id <id> --json` — lookup customer by ID
-  Example: `dotnet run -- models query Customer --customer-id C-1001 --json`
-- `dotnet run -- models browse Customer --json` — list all customers
+- `Coffeeshop-Cli models query Customer --email <email> --json` — lookup customer by email
+  Example: `Coffeeshop-Cli models query Customer --email alice@example.com --json`
+- `Coffeeshop-Cli models query Customer --customer-id <id> --json` — lookup customer by ID
+  Example: `Coffeeshop-Cli models query Customer --customer-id C-1001 --json`
+- `Coffeeshop-Cli models browse Customer --json` — list all customers
 
 **Product Catalog:**
-- `dotnet run -- models browse MenuItem --json` — list all menu items with prices
+- `Coffeeshop-Cli models browse MenuItem --json` — list all menu items with prices
 
 **Orders:**
-- `dotnet run -- models submit Order --json` — create new order
+- `Coffeeshop-Cli models submit Order --json` — create new order
   Input: `{"customer_id":"C-1001","items":[{"item_type":"LATTE","qty":2}]}`
   Returns: Complete order object with generated OrderId, Status=Pending, and calculated Total
 
@@ -105,7 +105,7 @@ Goal: Build, price, and confirm the order.
 
 Goal: Create order and confirm.
 
-1. Call: `dotnet run -- models submit Order --json`
+1. Call: `Coffeeshop-Cli models submit Order --json`
    Body: `{"customer_id":"<CUSTOMER.CustomerId>","items":[{"item_type":"LATTE","qty":2}]}`
    Note: OrderId is auto-generated. Prices and total are auto-calculated. Status is set to Pending.
    Store result ORDER (includes OrderId, Total, Status).

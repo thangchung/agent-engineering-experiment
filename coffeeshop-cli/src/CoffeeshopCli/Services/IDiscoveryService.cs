@@ -31,4 +31,5 @@ public record SkillInfo
     public required string Category { get; init; }
     public required string LoopType { get; init; }
     public required string Path { get; init; }
+    public string? Content { get; init; }
 }

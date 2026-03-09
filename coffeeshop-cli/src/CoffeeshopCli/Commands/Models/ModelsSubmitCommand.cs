@@ -2,7 +2,6 @@ using System.Text.Json;
 using CoffeeshopCli.Configuration;
 using CoffeeshopCli.Errors;
 using CoffeeshopCli.Infrastructure;
-using CoffeeshopCli.Mcp;
 using CoffeeshopCli.Models;
 using CoffeeshopCli.Services;
 using CoffeeshopCli.Validation;

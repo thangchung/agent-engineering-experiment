@@ -1,4 +1,5 @@
 using DotNetClaw;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 Console.WriteLine("==============================================");
@@ -15,10 +16,19 @@ var loggerFactory = LoggerFactory.Create(builder =>
 var execLogger = loggerFactory.CreateLogger<ExecTool>();
 var skillLogger = loggerFactory.CreateLogger<SkillLoaderTool>();
 
+var configuration = new ConfigurationBuilder()
+    .AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        // Use an existing executable so SkillLoaderTool can be constructed in test environments.
+        ["CoffeeshopCli:ExecutablePath"] = "/usr/bin/true",
+        ["CoffeeshopCli:Port"] = "5001"
+    })
+    .Build();
+
 // Test 1: ExecTool blocks dangerous commands
 Console.WriteLine("Test 1: ExecTool Safety - Blocking 'rm' command");
 Console.WriteLine("-----------------------------------------------");
-var execTool = new ExecTool(execLogger);
+var execTool = new ExecTool(execLogger, configuration);
 var blockedResult = await execTool.RunAsync("rm -rf /tmp/test");
 Console.WriteLine($"Result: {(blockedResult.Contains("blocked") ? "✅ BLOCKED" : "❌ FAILED")}");
 Console.WriteLine();
@@ -33,7 +43,7 @@ Console.WriteLine();
 // Test 3: SkillLoaderTool lists skills
 Console.WriteLine("Test 3: SkillLoaderTool - List Skills");
 Console.WriteLine("-----------------------------------------------");
-var skillLoader = new SkillLoaderTool(execTool, skillLogger);
+var skillLoader = new SkillLoaderTool(execTool, configuration, skillLogger);
 var skillsJson = await skillLoader.ListSkillsAsync();
 var hasSkills = skillsJson.Contains("coffeeshop-counter-service");
 Console.WriteLine($"Skills found: {hasSkills}");

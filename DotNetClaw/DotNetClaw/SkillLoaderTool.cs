@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 
 namespace DotNetClaw;
 
@@ -7,8 +8,42 @@ namespace DotNetClaw;
 /// Loads agent skills from the coffeeshop-cli tool.
 /// Skills are SKILL.md manifests that define multi-step agentic workflows.
 /// </summary>
-public sealed class SkillLoaderTool(ExecTool execTool, ILogger<SkillLoaderTool> logger)
+public sealed class SkillLoaderTool
 {
+    private readonly ExecTool execTool;
+    private readonly ILogger<SkillLoaderTool> logger;
+    private readonly string coffeeshopCliExecutablePath;
+    private readonly int coffeeshopCliPort;
+
+    public SkillLoaderTool(
+        ExecTool execTool,
+        IConfiguration configuration,
+        ILogger<SkillLoaderTool> logger)
+    {
+        this.execTool = execTool;
+        this.logger = logger;
+
+        var configuredPath = configuration["CoffeeshopCli:ExecutablePath"];
+        if (string.IsNullOrWhiteSpace(configuredPath))
+        {
+            throw new InvalidOperationException(
+                "Missing required configuration key 'CoffeeshopCli:ExecutablePath'. " +
+                "Set it to the coffeeshop-cli executable file path.");
+        }
+
+        coffeeshopCliExecutablePath = Path.GetFullPath(configuredPath);
+        if (!File.Exists(coffeeshopCliExecutablePath))
+        {
+            throw new InvalidOperationException(
+                $"Configured coffeeshop-cli executable does not exist: '{coffeeshopCliExecutablePath}'. " +
+                "Check 'CoffeeshopCli:ExecutablePath' in configuration.");
+        }
+
+        // Read port configuration (default to 5001 to avoid conflict with common development servers on 5000)
+        coffeeshopCliPort = configuration.GetValue<int?>("CoffeeshopCli:Port") ?? 5001;
+        logger.LogInformation("[SkillLoaderTool] Configured to use port {Port} for coffeeshop-cli", coffeeshopCliPort);
+    }
+
     /// <summary>
     /// Lists all available skills from coffeeshop-cli.
     /// Returns a JSON array of skill names.
@@ -20,11 +55,11 @@ public sealed class SkillLoaderTool(ExecTool execTool, ILogger<SkillLoaderTool> 
     {
         logger.LogInformation("[SkillLoaderTool] ListSkillsAsync called");
 
-        var cwd = GetCoffeeshopCliDirectory();
-        var projectPath = Path.Combine(cwd, "src/CoffeeshopCli/CoffeeshopCli.csproj");
-        var command = $"dotnet run --project \"{projectPath}\" -- skills list --json";
+        // Cross-platform command construction - ExecTool handles platform-specific shell execution
+        // Set PORT environment variable to avoid conflicts
+        var command = $"PORT={coffeeshopCliPort} \"{coffeeshopCliExecutablePath}\" skills list --json";
         
-        var result = await execTool.RunAsync(command, workingDirectory: cwd, ct: ct);
+        var result = await execTool.RunAsync(command, ct: ct);
         
         // Parse ExecTool result
         var execResult = JsonSerializer.Deserialize<ExecToolResult>(result);
@@ -51,11 +86,12 @@ public sealed class SkillLoaderTool(ExecTool execTool, ILogger<SkillLoaderTool> 
     {
         logger.LogInformation("[SkillLoaderTool] LoadSkillAsync called: {SkillName}", skillName);
 
-        var cwd = GetCoffeeshopCliDirectory();
-        var projectPath = Path.Combine(cwd, "src/CoffeeshopCli/CoffeeshopCli.csproj");
-        var command = $"dotnet run --project \"{projectPath}\" -- skills show {skillName} --json";
+        // Cross-platform command construction with parameter sanitization
+        // Note: Quotes in skillName could break shell parsing, but assuming skill names are safe identifiers
+        // Set PORT environment variable to avoid conflicts
+        var command = $"PORT={coffeeshopCliPort} \"{coffeeshopCliExecutablePath}\" skills show \"{skillName}\" --json";
         
-        var result = await execTool.RunAsync(command, workingDirectory: cwd, ct: ct);
+        var result = await execTool.RunAsync(command, ct: ct);
         
         // Parse ExecTool result
         var execResult = JsonSerializer.Deserialize<ExecToolResult>(result);
@@ -84,17 +120,6 @@ public sealed class SkillLoaderTool(ExecTool execTool, ILogger<SkillLoaderTool> 
         
         Extract the 'body' field and follow the instructions within it.
         """;
-    }
-
-    private static string GetCoffeeshopCliDirectory()
-    {
-        // Get DotNetClaw project directory (where this assembly runs from)
-        var dotnetclawDir = AppContext.BaseDirectory;
-        
-        // Navigate to parent of DotNetClaw solution, then to coffeeshop-cli
-        // From DotNetClaw/DotNetClaw/bin/Debug/net10.0/ go up 5 levels to parent experiment folder
-        var parentDir = Path.GetFullPath(Path.Combine(dotnetclawDir, "../../../../.."));
-        return Path.Combine(parentDir, "coffeeshop-cli");
     }
 
     // Internal types for JSON deserialization

@@ -22,7 +22,7 @@ Two complementary integration paths for coffeeshop-cli → DotNetClaw:
 ```
 coffeeshop-cli (MCP Server)              DotNetClaw (MCP Client)
 ────────────────────────                  ────────────────────────
-1. `dotnet run -- mcp serve` starts       4. McpToolLoader reads Mcp:Servers config
+1. `Coffeeshop-Cli mcp serve` starts       4. McpToolLoader reads Mcp:Servers config
    McpServerHost over stdio                  starts coffeeshop-cli as child process
                                              connects via stdin/stdout JSON-RPC
 2. Registers 9 MCP tools:               5. ListToolsAsync() discovers 9 tools
@@ -368,7 +368,7 @@ User (Slack): "What's on the coffee menu?"
   │  McpClient.CallToolAsync("get_menu", {})
   │
   ├─ Stdin/stdout JSON-RPC to coffeeshop-cli process
-  │  `dotnet run -- mcp serve`
+  │  `Coffeeshop-Cli mcp serve`
   │
   ├─ McpServerHost → OrderTools.get_menu()
   │  calls McpClientFactory → Python orders.py MCP server
@@ -645,9 +645,9 @@ All commands support `--json` for structured JSON output.
 
 ### Available Commands
 
-- `dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models list --json`
-- `dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models show <name> --json`
-- `dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models submit <name> --file <file> --json`
+- `Coffeeshop-Cli models list --json`
+- `Coffeeshop-Cli models show <name> --json`
+- `Coffeeshop-Cli models submit <name> --file <file> --json`
 
 ## Agentic Loop
 
@@ -664,7 +664,7 @@ Greet the customer and establish their identity.
 **Prompt:** "Hi! I'd love to help you with a coffee order. What's your email or customer ID?"
 
 **On user response:**
-- Call: `RunAsync("dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models submit Customer --json")`
+- Call: `RunAsync("Coffeeshop-Cli models submit Customer --json")`
 - Pass user email/ID as JSON {"email": "...", "customer_id": "..."}
 - Store result as CUSTOMER
 - If not found: "Sorry, I couldn't find an account with that email/ID. Please try again."
@@ -677,12 +677,12 @@ Determine what the customer wants to do.
 
 **On user response, classify into:**
 - `order-status`: "Let me look up order {order_id}"
-  - Call: `RunAsync("dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models show Order --json")`
+  - Call: `RunAsync("Coffeeshop-Cli models show Order --json")`
   - Display order details
   - Loop back to STEP 2
 - `account`: Display account details from CUSTOMER, loop back to STEP 2
 - `item-types`: "Let me show you our menu"
-  - Call: `RunAsync("dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models list --json")`
+  - Call: `RunAsync("Coffeeshop-Cli models list --json")`
   - Display menu
   - Loop back to STEP 2
 - `process-order`: Continue to STEP 3
@@ -695,7 +695,7 @@ Build order from conversation, get pricing, show summary.
 - Item types (CAPPUCCINO, LATTE, CROISSANT, etc.)
 - Quantities per item
 
-**Call:** `RunAsync("dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models show MenuItem --json")`
+**Call:** `RunAsync("Coffeeshop-Cli models show MenuItem --json")`
 - Get prices for selected items
 - Calculate total: sum(price * qty)
 
@@ -718,11 +718,11 @@ Confirm? (yes/no)
 
 Create order and confirm.
 
-**Call:** `RunAsync("dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models submit Order --json")`
+**Call:** `RunAsync("Coffeeshop-Cli models submit Order --json")`
 - Pass ORDER as JSON
 - Receive created order with OrderID
 
-**Call:** `RunAsync("dotnet run --project ../coffeeshop-cli/src/CoffeeshopCli -- models submit OrderNote --json")`
+**Call:** `RunAsync("Coffeeshop-Cli models submit OrderNote --json")`
 - Add confirmation note: "Order confirmed by customer"
 - Update order status to "confirmed"
 

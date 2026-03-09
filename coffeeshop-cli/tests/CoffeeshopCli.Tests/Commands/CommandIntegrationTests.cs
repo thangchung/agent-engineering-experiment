@@ -19,4 +19,16 @@ public sealed class CommandIntegrationTests
         Assert.Contains(models, m => m.Name == "Order");
         Assert.Contains(skills, s => s.Name == "coffeeshop-counter-service");
     }
+
+    [Fact]
+    public void DiscoveryService_FallsBackToEmbeddedSkills_WhenFilesystemMissing()
+    {
+        var missingDir = Path.Combine(Path.GetTempPath(), $"missing-skills-{Guid.NewGuid()}");
+        var discovery = new FileSystemDiscoveryService(new ModelRegistry(), missingDir);
+
+        var skills = discovery.DiscoverSkills();
+
+        Assert.Contains(skills, s => s.Name == "coffeeshop-counter-service");
+        Assert.Contains(skills, s => !string.IsNullOrWhiteSpace(s.Content));
+    }
 }

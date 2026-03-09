@@ -24,4 +24,9 @@
     <!-- <PackageReference Include="ModelContextProtocol" Version="..." /> -->
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Embed the default skill manifest so the CLI works from build output locations. -->
+    <EmbeddedResource Include="../../skills/coffeeshop-counter-service/SKILL.md" />
+  </ItemGroup>
+
 </Project>

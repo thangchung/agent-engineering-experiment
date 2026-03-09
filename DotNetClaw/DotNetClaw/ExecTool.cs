@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Extensions.Configuration;
 
 namespace DotNetClaw;
 
@@ -8,8 +9,34 @@ namespace DotNetClaw;
 /// Executes shell commands with safety constraints.
 /// Blocks dangerous operations that could harm the system.
 /// </summary>
-public sealed class ExecTool(ILogger<ExecTool> logger)
+public sealed class ExecTool
 {
+    private readonly ILogger<ExecTool> logger;
+    private readonly string? coffeeshopCliExecutablePath;
+    private readonly int coffeeshopCliPort;
+
+    public ExecTool(ILogger<ExecTool> logger, IConfiguration? configuration = null)
+    {
+        this.logger = logger;
+        
+        // Load coffeeshop-cli configuration if available
+        if (configuration != null)
+        {
+            coffeeshopCliExecutablePath = configuration["CoffeeshopCli:ExecutablePath"];
+            if (!string.IsNullOrWhiteSpace(coffeeshopCliExecutablePath))
+            {
+                coffeeshopCliExecutablePath = Path.GetFullPath(coffeeshopCliExecutablePath);
+            }
+            
+            var portStr = configuration["CoffeeshopCli:Port"];
+            coffeeshopCliPort = int.TryParse(portStr, out var port) ? port : 5001;
+        }
+        else
+        {
+            coffeeshopCliPort = 5001;
+        }
+    }
+
     // Blocklist — dangerous commands that should never be executed
     private static readonly HashSet<string> BlockedCommands = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -40,6 +67,16 @@ public sealed class ExecTool(ILogger<ExecTool> logger)
         logger.LogInformation("[ExecTool] RunAsync called: {Command} (cwd: {Cwd})", 
             command, workingDirectory ?? Directory.GetCurrentDirectory());
 
+        // Rewrite coffeeshop-cli commands to use configured path + PORT
+        var originalCommand = command;
+        command = RewriteCoffeeshopCliCommand(command);
+        
+        if (command != originalCommand)
+        {
+            logger.LogDebug("[ExecTool] Command rewritten: {Original} → {Rewritten}", 
+                originalCommand, command);
+        }
+
         // Safety check — block dangerous commands
         var firstToken = command.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         if (firstToken != null)
@@ -62,10 +99,19 @@ public sealed class ExecTool(ILogger<ExecTool> logger)
 
         try
         {
+            // Cross-platform shell selection and command escaping
+            var isWindows = OperatingSystem.IsWindows();
+            
+            // Windows: cmd.exe /c command (quotes in command are passed through)
+            // Unix: zsh -c "command" (quotes in command are escaped with backslash)
+            var (fileName, arguments) = isWindows
+                ? ("cmd.exe", $"/c {command}")
+                : ("/bin/zsh", $"-c \"{command.Replace("\"", "\\\"")}\"");
+
             var startInfo = new ProcessStartInfo
             {
-                FileName = "/bin/zsh",
-                Arguments = $"-c \"{command.Replace("\"", "\\\"")}\"",
+                FileName = fileName,
+                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -113,5 +159,34 @@ public sealed class ExecTool(ILogger<ExecTool> logger)
                 error = "EXCEPTION"
             });
         }
+    }
+
+    /// <summary>
+    /// Rewrites commands starting with 'coffeeshop-cli' or 'Coffeeshop-Cli'
+    /// to use the configured executable path and PORT environment variable.
+    /// </summary>
+    private string RewriteCoffeeshopCliCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(coffeeshopCliExecutablePath))
+        {
+            return command;
+        }
+
+        var trimmed = command.TrimStart();
+        
+        // Check if command starts with coffeeshop-cli (case-insensitive)
+        if (trimmed.StartsWith("coffeeshop-cli ", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("coffeeshop-cli", StringComparison.OrdinalIgnoreCase))
+        {
+            // Extract the rest of the command after 'coffeeshop-cli'
+            var restOfCommand = trimmed.Length > 15 
+                ? trimmed.Substring(15) 
+                : "";
+            
+            // Reconstruct with PORT prefix and full path
+            return $"PORT={coffeeshopCliPort} \"{coffeeshopCliExecutablePath}\"{restOfCommand}";
+        }
+
+        return command;
     }
 }

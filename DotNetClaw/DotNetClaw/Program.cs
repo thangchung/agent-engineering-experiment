@@ -28,7 +28,12 @@ builder.Services.AddSingleton<MemoryTool>(sp =>
 // ============================================================================
 // 2b. EXECUTION + SKILL TOOLS — shell execution and skill loading
 // ============================================================================
-builder.Services.AddSingleton<ExecTool>();
+builder.Services.AddSingleton<ExecTool>(sp =>
+{
+    var elogger = sp.GetRequiredService<ILogger<ExecTool>>();
+    var config = sp.GetRequiredService<IConfiguration>();
+    return new ExecTool(elogger, config);
+});
 builder.Services.AddSingleton<SkillLoaderTool>();
 
 // ============================================================================

@@ -186,6 +186,61 @@
 - [x] **`skills show` with unknown name returns error**  
   **Verify:** `dotnet run -- skills show nonexistent` exits with code 1 and displays error message
 
+### 2.4a Skills Init Command & User Profile Directory (R-CMD-06a, R-CFG-05)
+
+- [x] **Create `SkillsCopier.cs`** — utility for copying skills from project to user profile
+  **Verify:** Unit test — `GetUserProfileSkillsPath()` returns `~/coffeeshop-cli/skills`; `CopySkills()` copies directory structure correctly
+  **Methods:**
+  - `GetUserProfileSkillsPath()` — returns `~/coffeeshop-cli/skills/`
+  - `CopySkills(sourceDir, destDir, force)` — copies skills recursively; returns `CopyResult` with counts
+  - `ValidateSkillDirectory(path)` — checks if directory contains valid skills
+  - `CopyDirectory(source, dest, overwrite)` — private recursive copy helper
+
+- [x] **Create `SkillsInitCommand.cs`** — `skills init [--force]` copies skills to user profile
+  **Verify:** `dotnet run -- skills init` creates `~/coffeeshop-cli/skills/`, copies 1 skill, displays success table
+  **Behavior:**
+  - Without `--force`: skips existing skills, displays "Skills skipped" count
+  - With `--force`: overwrites existing skills
+  - Returns exit code 0 on success, 1 on error
+
+- [x] **Update `ConfigLoader.cs`** — add user profile path to skills directory precedence
+  **Verify:** Unit test — with user profile directory present, `ConfigLoader.Load()` prefers `~/coffeeshop-cli/skills/` over `./skills/`
+  **Changes:**
+  - Add `GetUserProfileSkillsDirectory()` helper method
+  - Update skills directory resolution: CLI option > env var > config file > user profile (if exists) > `./skills/`
+
+- [x] **Register `SkillsInitCommand` in Program.cs**
+  **Verify:** `dotnet run -- skills --help` shows `init` subcommand
+
+- [x] **Create `SkillsCopierTests.cs`** — 8 unit tests
+  **Verify:** `dotnet test --filter "FullyQualifiedName~SkillsCopierTests"` — all 8 tests pass
+  **Tests:**
+  1. `GetUserProfileSkillsPath_ReturnsValidPath` — path resolution
+  2. `CopySkills_WithValidSource_CreatesDestinationStructure` — basic copy
+  3. `CopySkills_WithExistingSkill_SkipsWhenForceIsFalse` — skip behavior
+  4. `CopySkills_WithExistingSkill_OverwritesWhenForceIsTrue` — force flag
+  5. `CopySkills_WithAssetsFolder_CopiesRecursively` — nested directories
+  6. `CopySkills_WithMultipleSkills_CopiesAll` — multiple skills
+  7. `CopySkills_WithMissingSkillMd_SkipsDirectory` — validation
+  8. `ValidateSkillDirectory_WithValidDirectory_ReturnsTrue` — validation method
+
+- [x] **Create `SkillsInitCommandTests.cs`** — 3 integration tests
+  **Verify:** `dotnet test --filter "FullyQualifiedName~SkillsInitCommandTests"` — all 3 tests pass
+  **Tests:**
+  1. `Execute_WithValidSource_ReturnsSuccessExitCode` — happy path
+  2. `Execute_WithMissingSource_ReturnsErrorExitCode` — error handling
+  3. `Execute_WithForceFlag_OverwritesExisting` — force flag behavior
+
+- [x] **Manual verification**
+  **Verify:** All commands automatically discover from user profile after `skills init`
+  - `dotnet run -- skills init` → success, creates `~/coffeeshop-cli/skills/`
+  - `dotnet run -- skills list` → discovers from user profile
+  - `dotnet run -- skills show coffeeshop-counter-service` → loads from user profile
+  - `dotnet run -- skills init` (second time) → skips existing, suggests `--force`
+  - `dotnet run -- skills init --force` → overwrites successfully
+
+**Architecture Note:** No changes to `SkillsListCommand`, `SkillsShowCommand`, or `SkillsInvokeCommand` required. All commands use `IDiscoveryService` via DI, which automatically resolves skills from the user profile location after ConfigLoader update.
+
 ### 2.5 Commands — models query & browse (R-CMD-02a, R-CMD-02b)
 
 - [x] **Create `ModelsQueryCommand.cs`** — `models query <model> [--email <email>] [--customer-id <id>]` for customer lookup
@@ -459,11 +514,11 @@
 | Phase | Items | Covers |
 |-------|-------|--------|
 | 1 — Foundation + Models | 28 | R-DISC-01/02, R-CMD-01/02/03/10, R-MOD-01..05, R-OUT-01..04, R-ERR-01..04 |
-| 2 — Skills + Submission | 29 | R-DISC-03..05, R-CMD-04/05/06, R-SKILL-01..04, R-HELP-01..05, R-VAL-01..07, R-CFG-01..05 |
+| 2 — Skills + Submission | 40 | R-DISC-03..05, R-CMD-04/05/06/06a, R-SKILL-01..04, R-HELP-01..05, R-VAL-01..07, R-CFG-01..06 (incl. user profile directory + 11 tests) |
 | 3 — MCP Server + Invocation | 16 | R-CMD-07/08/09, R-SKILL-05/06, R-MCP-01..05, R-ERR-05 |
 | 4 — DotNetClaw Integration | 14 | v2 Phases 4 (Approach A + B) |
 | 5 — Documentation + ACs | 13 | v2 Phase 5, PRD §11 acceptance criteria |
-| **Total** | **100** | **Mandatory: 96** / **Optional: 2** / **Deferred: 2** |
+| **Total** | **111** | **Mandatory: 107** / **Optional: 2** / **Deferred: 2** |
 
 ### Applied Principles
 
