@@ -26,6 +26,12 @@ builder.Services.AddSingleton<MemoryTool>(sp =>
 });
 
 // ============================================================================
+// 2b. EXECUTION + SKILL TOOLS — shell execution and skill loading
+// ============================================================================
+builder.Services.AddSingleton<ExecTool>();
+builder.Services.AddSingleton<SkillLoaderTool>();
+
+// ============================================================================
 // 3. GITHUB COPILOT SDK + MAF BRIDGE → AIAgent
 // ============================================================================
 // Microsoft.Agents.AI.GitHub.Copilot provides CopilotClient.AsAIAgent()
@@ -43,17 +49,61 @@ builder.Services.AddSingleton<AIAgent>(sp =>
 {
     var mind          = sp.GetRequiredService<MindLoader>();
     var memTool       = sp.GetRequiredService<MemoryTool>();
+    var execTool      = sp.GetRequiredService<ExecTool>();
+    var skillLoader   = sp.GetRequiredService<SkillLoaderTool>();
+    var startupLog    = sp.GetRequiredService<ILoggerFactory>().CreateLogger("DotNetClaw.Startup");
+    
     var systemMessage = mind.LoadSystemMessageAsync().GetAwaiter().GetResult();
+
+    // Discover available skills at startup and inject into system message
+    var skillsJson = skillLoader.ListSkillsAsync().GetAwaiter().GetResult();
+    string skillAdvertisement = "";
+    try
+    {
+        // Extract skill names using regex pattern matching instead of strict JSON parsing
+        // This works around the issue of literal newlines in coffeeshop-cli JSON output
+        var skillNames = new List<string>();
+        var regex = new System.Text.RegularExpressions.Regex(@"""name"":\s*""([^""]+)""");
+        var matches = regex.Matches(skillsJson);
+        
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            if (match.Groups.Count > 1)
+            {
+                var name = match.Groups[1].Value;
+                if (!string.IsNullOrEmpty(name))
+                    skillNames.Add(name);
+            }
+        }
+        
+        startupLog.LogInformation("[Skills] Discovered {Count} skills: {Names}", 
+            skillNames.Count, string.Join(", ", skillNames));
+
+        if (skillNames.Any())
+        {
+            skillAdvertisement = $"\n\n---\n\n## Available Skills\n\n" +
+                $"You have access to {skillNames.Count} agent skill(s) that define multi-step workflows:\n\n" +
+                string.Join("\n", skillNames.Select(n => $"- `{n}`")) + "\n\n" +
+                "**To use a skill:** Call `load_skill('<skill-name>')` to get step-by-step instructions. " +
+                "Then follow the workflow defined in the skill manifest.";
+        }
+    }
+    catch (Exception ex)
+    {
+        startupLog.LogWarning(ex, "[Skills] Failed to discover skills at startup (non-critical)");
+    }
 
     var tools = new List<AITool>
     {
         AIFunctionFactory.Create(memTool.AppendLogAsync),
         AIFunctionFactory.Create(memTool.AddRuleAsync),
         AIFunctionFactory.Create(memTool.SaveFactAsync),
+        AIFunctionFactory.Create(execTool.RunAsync),
+        AIFunctionFactory.Create(skillLoader.ListSkillsAsync),
+        AIFunctionFactory.Create(skillLoader.LoadSkillAsync),
     };
 
     // Log each registered tool so we can verify names at startup
-    var startupLog = sp.GetRequiredService<ILoggerFactory>().CreateLogger("DotNetClaw.Startup");
     foreach (var tool in tools.OfType<AIFunction>())
         startupLog.LogInformation("[Agent] Tool registered: {Name} — {Description}",
             tool.Name,
@@ -74,7 +124,7 @@ builder.Services.AddSingleton<AIAgent>(sp =>
         name:         "DotNetClaw",
         description:  "Personal AI assistant",
         tools:        tools,
-        instructions: systemMessage);
+        instructions: systemMessage + skillAdvertisement);
 });
 
 builder.Services.AddSingleton<ClawRuntime>();

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/CoffeeshopCli/CoffeeshopCli.csproj" />
+  <Project Path="tests/CoffeeshopCli.Tests/CoffeeshopCli.Tests.csproj" />
+</Solution>
