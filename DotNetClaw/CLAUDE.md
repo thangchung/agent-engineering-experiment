@@ -199,5 +199,4 @@ Non-secret values live in `appsettings.json`. Secrets via `dotnet user-secrets`.
 | `Telegram:BotToken` | user-secrets (channel disabled if empty) |
 | `Discord:BotToken` | user-secrets (channel disabled if empty) |
 | `CoffeeshopCli:ExecutablePath` | appsettings (path to coffeeshop-cli executable) |
-| `CoffeeshopCli:Port` | appsettings (default: `5001`, port for coffeeshop-cli server to avoid conflicts) |
 | `Mcp:Servers` | appsettings (array of `{ Name, Transport, Command, Args }` or `{ Name, Transport, Url }`) |

@@ -13,7 +13,6 @@ public sealed class ExecTool
 {
     private readonly ILogger<ExecTool> logger;
     private readonly string? coffeeshopCliExecutablePath;
-    private readonly int coffeeshopCliPort;
 
     public ExecTool(ILogger<ExecTool> logger, IConfiguration? configuration = null)
     {
@@ -27,13 +26,6 @@ public sealed class ExecTool
             {
                 coffeeshopCliExecutablePath = Path.GetFullPath(coffeeshopCliExecutablePath);
             }
-            
-            var portStr = configuration["CoffeeshopCli:Port"];
-            coffeeshopCliPort = int.TryParse(portStr, out var port) ? port : 5001;
-        }
-        else
-        {
-            coffeeshopCliPort = 5001;
         }
     }
 
@@ -163,7 +155,7 @@ public sealed class ExecTool
 
     /// <summary>
     /// Rewrites commands starting with 'coffeeshop-cli' or 'Coffeeshop-Cli'
-    /// to use the configured executable path and PORT environment variable.
+    /// to use the configured executable path.
     /// </summary>
     private string RewriteCoffeeshopCliCommand(string command)
     {
@@ -183,8 +175,8 @@ public sealed class ExecTool
                 ? trimmed.Substring(15) 
                 : "";
             
-            // Reconstruct with PORT prefix and full path
-            return $"PORT={coffeeshopCliPort} \"{coffeeshopCliExecutablePath}\"{restOfCommand}";
+            // Reconstruct with full path
+            return $"\"{coffeeshopCliExecutablePath}\"{restOfCommand}";
         }
 
         return command;

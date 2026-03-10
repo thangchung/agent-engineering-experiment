@@ -20,8 +20,7 @@ var configuration = new ConfigurationBuilder()
     .AddInMemoryCollection(new Dictionary<string, string?>
     {
         // Use an existing executable so SkillLoaderTool can be constructed in test environments.
-        ["CoffeeshopCli:ExecutablePath"] = "/usr/bin/true",
-        ["CoffeeshopCli:Port"] = "5001"
+        ["CoffeeshopCli:ExecutablePath"] = "/usr/bin/true"
     })
     .Build();
 

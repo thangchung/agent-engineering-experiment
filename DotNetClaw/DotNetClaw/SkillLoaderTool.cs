@@ -13,7 +13,6 @@ public sealed class SkillLoaderTool
     private readonly ExecTool execTool;
     private readonly ILogger<SkillLoaderTool> logger;
     private readonly string coffeeshopCliExecutablePath;
-    private readonly int coffeeshopCliPort;
 
     public SkillLoaderTool(
         ExecTool execTool,
@@ -38,10 +37,6 @@ public sealed class SkillLoaderTool
                 $"Configured coffeeshop-cli executable does not exist: '{coffeeshopCliExecutablePath}'. " +
                 "Check 'CoffeeshopCli:ExecutablePath' in configuration.");
         }
-
-        // Read port configuration (default to 5001 to avoid conflict with common development servers on 5000)
-        coffeeshopCliPort = configuration.GetValue<int?>("CoffeeshopCli:Port") ?? 5001;
-        logger.LogInformation("[SkillLoaderTool] Configured to use port {Port} for coffeeshop-cli", coffeeshopCliPort);
     }
 
     /// <summary>
@@ -56,8 +51,7 @@ public sealed class SkillLoaderTool
         logger.LogInformation("[SkillLoaderTool] ListSkillsAsync called");
 
         // Cross-platform command construction - ExecTool handles platform-specific shell execution
-        // Set PORT environment variable to avoid conflicts
-        var command = $"PORT={coffeeshopCliPort} \"{coffeeshopCliExecutablePath}\" skills list --json";
+        var command = $"\"{coffeeshopCliExecutablePath}\" skills list --json";
         
         var result = await execTool.RunAsync(command, ct: ct);
         
@@ -88,8 +82,7 @@ public sealed class SkillLoaderTool
 
         // Cross-platform command construction with parameter sanitization
         // Note: Quotes in skillName could break shell parsing, but assuming skill names are safe identifiers
-        // Set PORT environment variable to avoid conflicts
-        var command = $"PORT={coffeeshopCliPort} \"{coffeeshopCliExecutablePath}\" skills show \"{skillName}\" --json";
+        var command = $"\"{coffeeshopCliExecutablePath}\" skills show \"{skillName}\" --json";
         
         var result = await execTool.RunAsync(command, ct: ct);
         
