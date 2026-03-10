@@ -74,19 +74,21 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
             string result = string.Empty;
-            int updateCount = 0;
+            int rawCount = 0;
+            int textCount = 0;
             await foreach (var update in agent.RunStreamingAsync(message, session, null, ct))
             {
+                rawCount++;
                 logger.LogDebug("[{Session}] RAW update #{N}: HasText={Has} Len={Len}",
-                    sessionId, updateCount + 1, !string.IsNullOrEmpty(update.Text), update.Text?.Length ?? 0);
+                    sessionId, rawCount, !string.IsNullOrEmpty(update.Text), update.Text?.Length ?? 0);
                 if (!string.IsNullOrEmpty(update.Text))
                 {
                     result = update.Text;   // keep the last (most complete) update
-                    updateCount++;
+                    textCount++;
                 }
             }
-            logger.LogDebug("[{Session}] ← {Updates} updates, final length {Len}",
-                sessionId, updateCount, result.Length);
+            logger.LogDebug("[{Session}] ← {Raw} raw / {Text} text updates, final length {Len}",
+                sessionId, rawCount, textCount, result.Length);
             return result;
         }
         finally
