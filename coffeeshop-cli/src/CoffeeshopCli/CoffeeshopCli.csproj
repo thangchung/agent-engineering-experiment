@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+
     <!-- Phase 1 dependencies -->
     <PackageReference Include="Spectre.Console" Version="0.49.1" />
     <PackageReference Include="Spectre.Console.Cli" Version="0.49.1" />
@@ -19,6 +21,7 @@
     
     <!-- Phase 2 dependencies -->
     <PackageReference Include="YamlDotNet" Version="16.2.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.1.0" />
     
     <!-- Phase 3 dependencies - will be added when implementing MCP server -->
     <!-- <PackageReference Include="ModelContextProtocol" Version="..." /> -->

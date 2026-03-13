@@ -18,6 +18,9 @@
     <!-- Bridge: CopilotClient.AsChatClient() → IChatClient for MAF -->
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260225.1" />
 
+    <!-- MCP client SDK: used for HttpClientTransport + McpClient in SkillLoaderTool -->
+    <PackageReference Include="ModelContextProtocol" Version="1.1.0" />
+
     <!-- Slack channel via SlackNet (Events API + request signature validation) -->
     <PackageReference Include="SlackNet" Version="0.17.9" />
     <PackageReference Include="SlackNet.AspNetCore" Version="0.17.9" />
@@ -25,6 +28,10 @@
     <!-- OpenAPI + Scalar API Reference UI -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.*" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotNetClaw.ServiceDefaults\DotNetClaw.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>

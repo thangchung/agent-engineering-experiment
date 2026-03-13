@@ -6,46 +6,52 @@ namespace CoffeeshopCli.Tests.Configuration;
 public sealed class ConfigLoaderTests
 {
     [Fact]
-    public void Load_UsesFileSkillsDirectory()
+    public void Load_DefaultsWhenNoAppsettings()
     {
-        using var fixture = new TestFixtures.TempDirectoryFixture();
-        var configDir = Path.Combine(fixture.Path, ".config", "coffeeshop-cli");
-        Directory.CreateDirectory(configDir);
+        using var dir = new TestFixtures.TempDirectoryFixture();
 
-        var configPath = Path.Combine(configDir, "config.json");
-        File.WriteAllText(configPath, """
-{
-  "discovery": {
-    "skills_directory": "/tmp/file-skills"
-  }
-}
-""");
+        var cfg = ConfigLoader.Load(basePath: dir.Path);
 
-        var cfg = ConfigLoader.Load(explicitConfigPath: configPath);
-
-        Assert.Equal("/tmp/file-skills", cfg.Discovery.SkillsDirectory);
+        Assert.Equal("./skills", cfg.Discovery.SkillsDirectory);
+        Assert.False(cfg.Hosting.EnableHttpMcpBridge);
     }
 
     [Fact]
-    public void Load_UsesEnvOverFile()
+    public void Load_ReadsSkillsDirectoryFromAppsettings()
     {
-        using var fixture = new TestFixtures.TempDirectoryFixture();
-        var configPath = Path.Combine(fixture.Path, "config.json");
-        File.WriteAllText(configPath, """
+        using var dir = new TestFixtures.TempDirectoryFixture();
+        File.WriteAllText(Path.Combine(dir.Path, "appsettings.json"), """
 {
-  "discovery": {
-    "skills_directory": "/tmp/file-skills"
+  "Discovery": {
+    "SkillsDirectory": "/tmp/appsettings-skills"
   }
 }
 """);
 
-        var key = "COFFEESHOP_SKILLS_DIR";
+        var cfg = ConfigLoader.Load(basePath: dir.Path);
+
+        Assert.Equal("/tmp/appsettings-skills", cfg.Discovery.SkillsDirectory);
+    }
+
+    [Fact]
+    public void Load_EnvVarsOverrideAppsettings()
+    {
+        using var dir = new TestFixtures.TempDirectoryFixture();
+        File.WriteAllText(Path.Combine(dir.Path, "appsettings.json"), """
+{
+  "Discovery": {
+    "SkillsDirectory": "/tmp/appsettings-skills"
+  }
+}
+""");
+
+        var key = "Discovery__SkillsDirectory";
         var old = Environment.GetEnvironmentVariable(key);
         try
         {
             Environment.SetEnvironmentVariable(key, "/tmp/env-skills");
 
-            var cfg = ConfigLoader.Load(explicitConfigPath: configPath);
+            var cfg = ConfigLoader.Load(basePath: dir.Path);
             Assert.Equal("/tmp/env-skills", cfg.Discovery.SkillsDirectory);
         }
         finally
@@ -55,26 +61,18 @@ public sealed class ConfigLoaderTests
     }
 
     [Fact]
-    public void Load_UsesCliOverEnvAndFile()
+    public void Load_ReadsHostingFlagFromEnv()
     {
-        using var fixture = new TestFixtures.TempDirectoryFixture();
-        var configPath = Path.Combine(fixture.Path, "config.json");
-        File.WriteAllText(configPath, """
-{
-  "discovery": {
-    "skills_directory": "/tmp/file-skills"
-  }
-}
-""");
-
-        var key = "COFFEESHOP_SKILLS_DIR";
+        using var dir = new TestFixtures.TempDirectoryFixture();
+        var key = "Hosting__EnableHttpMcpBridge";
         var old = Environment.GetEnvironmentVariable(key);
         try
         {
-            Environment.SetEnvironmentVariable(key, "/tmp/env-skills");
+            Environment.SetEnvironmentVariable(key, "true");
 
-            var cfg = ConfigLoader.Load(explicitConfigPath: configPath, cliSkillsDirectory: "/tmp/cli-skills");
-            Assert.Equal("/tmp/cli-skills", cfg.Discovery.SkillsDirectory);
+            var cfg = ConfigLoader.Load(basePath: dir.Path);
+
+            Assert.True(cfg.Hosting.EnableHttpMcpBridge);
         }
         finally
         {

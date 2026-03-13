@@ -1,56 +1,33 @@
 ---
 name: coffeeshop-menu-guide
 description: >
-  Help users explore menu items, categories, and prices with concise,
-  structured responses powered by coffeeshop-cli JSON output.
+  Help users explore menu items, categories, and prices. MCP-first, CLI fallback.
 license: MIT
-compatibility: >
-  Requires coffeeshop-cli with models browse support for MenuItem and --json.
 metadata:
   author: coffeeshop-cli
-  version: "1.0"
+  version: "1.1"
   category: discovery
-  loop-type: deterministic
 ---
 
 # Coffee Shop Menu Guide Skill
 
-Use this skill when the user wants to browse menu options, compare prices, or decide what to order.
+Use this skill when the user asks for menu options, categories, prices, or recommendations.
 
-## Agent Defaults
+## Data Access — `get_menu_catalog`
 
-1. Always call `Coffeeshop-Cli models browse MenuItem --json` before making menu claims.
-2. Group suggestions by category when possible.
-3. Keep recommendations short and concrete.
+1. `tools/call menu_list_items {}`
+2. `Coffeeshop-Cli models browse MenuItem --json`
 
-## Command Reference
-
-- `Coffeeshop-Cli models browse MenuItem --json` — return complete menu catalog.
-
-## Common Patterns
-
-```bash
-Coffeeshop-Cli models browse MenuItem --json
-```
-
-Then format outputs like:
-
-- "Coffee: Latte ($4.50), Cappuccino ($4.00)"
-- "Food: Croissant ($3.25), Blueberry Muffin ($2.75)"
+Normalize to: `[{"item_type":"...","name":"...","category":"...","price":0.00}]`
 
 ## Workflow
 
-1. Retrieve menu catalog with `--json`.
-2. Filter or group by user intent (e.g., hot drinks, budget options, food add-ons).
-3. Present 3-6 options max unless user requests full list.
-4. Offer to proceed to order capture via `coffeeshop-counter-service` flow.
-
-## Error Handling
-
-- If browse fails, ask the user to retry and report the command error summary.
-- If requested item is not found, suggest nearest available alternatives.
+1. Execute `get_menu_catalog`.
+2. Filter/group by user intent. Return 3-6 options unless full list requested.
+3. Offer handoff to `coffeeshop-counter-service` if user wants to order.
 
 ## Safety Notes
 
-- Do not fabricate menu items or prices.
-- Keep currency formatting consistent: `$<amount with 2 decimals>`.
+- Never fabricate items or prices.
+- Format money as `$<amount with 2 decimals>`.
+- If all paths fail, return concise retry guidance.

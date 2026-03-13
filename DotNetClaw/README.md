@@ -5,6 +5,7 @@
 ## Debug with Aspire
 
 ```sh
+dotnet run --project DotNetClaw.AppHost/DotNetClaw.AppHost.csproj
 aspire run --start-debug-session
 ```
 

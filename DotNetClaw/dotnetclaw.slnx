@@ -5,6 +5,7 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="DotNetClaw.AppHost/DotNetClaw.AppHost.csproj" />
+  <Project Path="DotNetClaw.ServiceDefaults/DotNetClaw.ServiceDefaults.csproj" />
   <Project Path="DotNetClaw.Tests/DotNetClaw.Tests.csproj" />
   <Project Path="DotNetClaw/DotNetClaw.csproj" />
 </Solution>

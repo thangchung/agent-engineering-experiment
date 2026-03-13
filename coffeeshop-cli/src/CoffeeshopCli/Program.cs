@@ -1,81 +1,133 @@
-using CoffeeshopCli.Commands.Models;
-using CoffeeshopCli.Commands.Mcp;
-using CoffeeshopCli.Commands.Docs;
 using CoffeeshopCli.Commands.Skills;
+using CoffeeshopCli.Commands.Mcp;
+using CoffeeshopCli.Commands.Models;
+using CoffeeshopCli.Commands.Docs;
 using CoffeeshopCli.Configuration;
 using CoffeeshopCli.Infrastructure;
 using CoffeeshopCli.Mcp;
 using CoffeeshopCli.Mcp.Tools;
 using CoffeeshopCli.Services;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Spectre.Console.Cli;
 
-var services = new ServiceCollection();
+var cfg = ConfigLoader.Load();
 
-// Register services
-services.AddSingleton<ModelRegistry>();
-services.AddSingleton<IDiscoveryService>(sp =>
+return cfg.Hosting.EnableHttpMcpBridge
+    ? await RunHttpBridgeAsync(cfg)
+    : RunCliMode(args, cfg);
+
+static int RunCliMode(string[] args, CliConfig cfg)
 {
-    var registry = sp.GetRequiredService<ModelRegistry>();
-    var config = ConfigLoader.Load();
-    return new FileSystemDiscoveryService(registry, config.Discovery.SkillsDirectory);
-});
-services.AddSingleton<SkillRunner>();
-services.AddSingleton<ModelTools>();
-services.AddSingleton<SkillTools>();
-services.AddSingleton<OrderTools>();
-services.AddSingleton<ToolRegistry>();
-services.AddSingleton<McpServerHost>();
+    var services = new ServiceCollection();
+    services.AddSingleton(cfg);
+    services.AddSingleton<ModelRegistry>();
+    services.AddSingleton<IDiscoveryService>(sp =>
+    {
+        var registry = sp.GetRequiredService<ModelRegistry>();
+        var loaded = sp.GetRequiredService<CliConfig>();
+        return new FileSystemDiscoveryService(registry, loaded.Discovery.SkillsDirectory);
+    });
+    services.AddSingleton<SkillRunner>();
+    services.AddSingleton<ModelTools>();
+    services.AddSingleton<SkillTools>();
+    services.AddSingleton<OrderTools>();
+    services.AddSingleton<OrderSubmitHandler>();
+    services.AddSingleton<ToolRegistry>();
+    services.AddSingleton<McpServerHost>();
 
-// Create CommandApp with DI
-var registrar = new TypeRegistrar(services);
-var app = new CommandApp(registrar);
+    var registrar = new TypeRegistrar(services);
+    var app = new CommandApp(registrar);
 
-app.Configure(config =>
+    app.Configure(config =>
+    {
+        config.SetApplicationName("coffeeshop-cli");
+
+        config.AddBranch("models", models =>
+        {
+            models.SetDescription("Browse and submit data models");
+            models.AddCommand<ModelsListCommand>("list")
+                .WithDescription("List all discovered data models");
+            models.AddCommand<ModelsShowCommand>("show")
+                .WithDescription("Display model schema (properties, types, validation rules)");
+            models.AddCommand<ModelsQueryCommand>("query")
+                .WithDescription("Query data records by filters (email, customer_id)");
+            models.AddCommand<ModelsBrowseCommand>("browse")
+                .WithDescription("List all records for a data model");
+            models.AddCommand<ModelsSubmitCommand>("submit")
+                .WithDescription("Submit JSON payload against a model for validation");
+        });
+
+        config.AddBranch("skills", skills =>
+        {
+            skills.SetDescription("Browse and invoke agent skills");
+            skills.AddCommand<SkillsListCommand>("list")
+                .WithDescription("List all discovered skills");
+            skills.AddCommand<SkillsShowCommand>("show")
+                .WithDescription("Display skill manifest (frontmatter + body)");
+            skills.AddCommand<SkillsInvokeCommand>("invoke")
+                .WithDescription("Run skill loop interactively");
+        });
+
+        config.AddBranch("mcp", mcp =>
+        {
+            mcp.SetDescription("Expose tools over stdio MCP transport");
+            mcp.AddCommand<McpServeCommand>("serve")
+                .WithDescription("Start MCP stdio server");
+        });
+
+        config.AddBranch("docs", docs =>
+        {
+            docs.SetDescription("Browse docs in TUI");
+            docs.AddCommand<DocsBrowseCommand>("browse")
+                .WithDescription("Browse models and skills");
+        });
+    });
+
+    return app.Run(args);
+}
+
+static async Task<int> RunHttpBridgeAsync(CliConfig cfg)
 {
-    config.SetApplicationName("coffeeshop-cli");
+    var builder = WebApplication.CreateBuilder();
 
-    // models branch
-    config.AddBranch("models", models =>
+    if (!string.IsNullOrWhiteSpace(cfg.Hosting.Urls))
     {
-        models.SetDescription("Browse and submit data models");
-        models.AddCommand<ModelsListCommand>("list")
-            .WithDescription("List all discovered data models");
-        models.AddCommand<ModelsShowCommand>("show")
-            .WithDescription("Display model schema (properties, types, validation rules)");
-        models.AddCommand<ModelsQueryCommand>("query")
-            .WithDescription("Query data records by filters (email, customer_id)");
-        models.AddCommand<ModelsBrowseCommand>("browse")
-            .WithDescription("List all records for a data model");
-        models.AddCommand<ModelsSubmitCommand>("submit")
-            .WithDescription("Submit JSON payload against a model for validation");
-    });
+        builder.WebHost.UseUrls(cfg.Hosting.Urls);
+    }
 
-    // skills branch
-    config.AddBranch("skills", skills =>
+    builder.Services.AddSingleton(cfg);
+    builder.Services.AddSingleton<ModelRegistry>();
+    builder.Services.AddSingleton<IDiscoveryService>(sp =>
     {
-        skills.SetDescription("Browse and invoke agent skills");
-        skills.AddCommand<SkillsListCommand>("list")
-            .WithDescription("List all discovered skills");
-        skills.AddCommand<SkillsShowCommand>("show")
-            .WithDescription("Display skill manifest (frontmatter + body)");
-        skills.AddCommand<SkillsInvokeCommand>("invoke")
-            .WithDescription("Run skill loop interactively");
+        var registry = sp.GetRequiredService<ModelRegistry>();
+        var loaded = sp.GetRequiredService<CliConfig>();
+        return new FileSystemDiscoveryService(registry, loaded.Discovery.SkillsDirectory);
     });
+    builder.Services.AddSingleton<SkillParser>();
+    builder.Services.AddSingleton<OrderSubmitHandler>();
+    builder.Services.AddHealthChecks();
 
-    config.AddBranch("mcp", mcp =>
-    {
-        mcp.SetDescription("Expose tools over stdio MCP transport");
-        mcp.AddCommand<McpServeCommand>("serve")
-            .WithDescription("Start MCP stdio server");
-    });
+    builder.Services
+        .AddMcpServer(options =>
+        {
+            options.ServerInfo = new Implementation
+            {
+                Name = "coffeeshop-cli-http-bridge",
+                Version = "0.1.0"
+            };
+        })
+        .WithHttpTransport()
+        .WithTools<CoffeeshopMcpBridgeTools>();
 
-    config.AddBranch("docs", docs =>
-    {
-        docs.SetDescription("Browse docs in TUI");
-        docs.AddCommand<DocsBrowseCommand>("browse")
-            .WithDescription("Browse models and skills");
-    });
-});
+    var app = builder.Build();
+    app.MapHealthChecks(cfg.Hosting.HealthRoute);
+    app.MapMcp(cfg.Hosting.HttpMcpRoute);
 
-return app.Run(args);
+    await app.RunAsync();
+    return 0;
+}
+

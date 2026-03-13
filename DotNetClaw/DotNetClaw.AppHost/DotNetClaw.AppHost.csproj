@@ -16,6 +16,7 @@
   <ItemGroup>
     <!-- Wire up the main DotNetClaw project as an Aspire resource -->
     <ProjectReference Include="..\DotNetClaw\DotNetClaw.csproj" />
+    <ProjectReference Include="..\..\coffeeshop-cli\src\CoffeeshopCli\CoffeeshopCli.csproj" />
   </ItemGroup>
 
 </Project>

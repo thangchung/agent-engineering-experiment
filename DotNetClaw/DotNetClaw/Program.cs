@@ -6,6 +6,8 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 // ============================================================================
 // 1. MIND — agent identity (SOUL.md + .github/agents/ + .working-memory/)
 // ============================================================================
@@ -56,12 +58,24 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     var memTool       = sp.GetRequiredService<MemoryTool>();
     var execTool      = sp.GetRequiredService<ExecTool>();
     var skillLoader   = sp.GetRequiredService<SkillLoaderTool>();
+    var config        = sp.GetRequiredService<IConfiguration>();
     var startupLog    = sp.GetRequiredService<ILoggerFactory>().CreateLogger("DotNetClaw.Startup");
     
     var systemMessage = mind.LoadSystemMessageAsync().GetAwaiter().GetResult();
 
     // Discover available skills at startup and inject into system message
     var skillsJson = skillLoader.ListSkillsAsync().GetAwaiter().GetResult();
+    var mcpMode = string.Equals(config["CoffeeshopCli:Mode"], "mcp", StringComparison.OrdinalIgnoreCase);
+    var mcpAvailable = mcpMode ? !HasTopLevelError(skillsJson) : false;
+
+    if (mcpMode)
+    {
+        if (mcpAvailable)
+            startupLog.LogInformation("[Skills] MCP mode active and reachable; ExecTool is disabled.");
+        else
+            startupLog.LogWarning("[Skills] MCP mode active but unavailable; enabling ExecTool fallback.");
+    }
+
     string skillAdvertisement = "";
     try
     {
@@ -103,10 +117,21 @@ builder.Services.AddSingleton<AIAgent>(sp =>
         AIFunctionFactory.Create(memTool.AppendLogAsync),
         AIFunctionFactory.Create(memTool.AddRuleAsync),
         AIFunctionFactory.Create(memTool.SaveFactAsync),
-        AIFunctionFactory.Create(execTool.RunAsync),
         AIFunctionFactory.Create(skillLoader.ListSkillsAsync),
         AIFunctionFactory.Create(skillLoader.LoadSkillAsync),
     };
+
+    if (mcpMode && mcpAvailable)
+    {
+        tools.Add(AIFunctionFactory.Create(skillLoader.ListMenuItemsAsync));
+        tools.Add(AIFunctionFactory.Create(skillLoader.LookupCustomerAsync));
+        tools.Add(AIFunctionFactory.Create(skillLoader.SubmitOrderAsync));
+    }
+
+    if (!mcpMode || !mcpAvailable)
+    {
+        tools.Add(AIFunctionFactory.Create(execTool.RunAsync));
+    }
 
     // Log each registered tool so we can verify names at startup
     foreach (var tool in tools.OfType<AIFunction>())
@@ -155,6 +180,8 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
+
 // OpenAPI + Scalar UI (dev only)
 if (app.Environment.IsDevelopment())
 {
@@ -170,3 +197,20 @@ app.MapGet("/", () => Results.Ok(new { name = "DotNetClaw", status = "running" }
 app.MapSlack(builder.Configuration);
 
 app.Run();
+
+static bool HasTopLevelError(string payload)
+{
+    if (string.IsNullOrWhiteSpace(payload))
+        return true;
+
+    try
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(payload);
+        return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+               doc.RootElement.TryGetProperty("error", out _);
+    }
+    catch
+    {
+        return true;
+    }
+}

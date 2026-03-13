@@ -1,12 +1,24 @@
 namespace CoffeeshopCli.Configuration;
 
 /// <summary>
-/// Root CLI configuration loaded from file/env/CLI options.
+/// HTTP MCP bridge hosting configuration.
+/// </summary>
+public sealed record HostingConfig
+{
+    public bool EnableHttpMcpBridge { get; init; } = false;
+    public string HttpMcpRoute { get; init; } = "/mcp";
+    public string HealthRoute { get; init; } = "/healthz";
+    public string Urls { get; init; } = "http://0.0.0.0:8080";
+}
+
+/// <summary>
+/// Root CLI configuration loaded from appsettings and environment variables.
 /// </summary>
 public sealed record CliConfig
 {
     public DiscoveryConfig Discovery { get; init; } = new();
     public McpConfig Mcp { get; init; } = new();
+    public HostingConfig Hosting { get; init; } = new();
 }
 
 /// <summary>
