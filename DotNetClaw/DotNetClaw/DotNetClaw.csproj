@@ -8,12 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- GitHub Copilot SDK: pinned to 0.1.23 — Microsoft.Agents.AI.GitHub.Copilot bridge was
-         compiled against 0.1.23; 0.1.30 removed SessionConfig.OnPermissionRequest causing MissingMethodException -->
+    <!-- GitHub Copilot SDK -->
     <PackageReference Include="GitHub.Copilot.SDK" Version="0.1.23" />
 
     <!-- MAF core: AIAgent, AgentSession, AgentResponseUpdate, tool calling loop -->
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-rc2" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-rc4" />
 
     <!-- Bridge: CopilotClient.AsChatClient() → IChatClient for MAF -->
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260225.1" />

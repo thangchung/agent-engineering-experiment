@@ -20,9 +20,19 @@ namespace DotNetClaw;
 public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
 {
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
+    private readonly bool _ollamaEnabled = false;
+    private readonly string _ollamaModel = "(default)";
+    private readonly string _ollamaBaseUrl = "(default)";
     // Per-session semaphore: prevents two concurrent requests on the same AgentSession
     // (AgentSession is not thread-safe; concurrent calls produce interleaved/garbled output)
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+
+    public ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger, IConfiguration config) : this(agent, logger)
+    {
+        _ollamaEnabled = config["Ollama:Enabled"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+        _ollamaModel = config["Ollama:Model"] ?? "(default)";
+        _ollamaBaseUrl = config["Ollama:BaseUrl"] ?? "(default)";
+    }
 
     /// <summary>Streaming variant — yields response text chunks as they arrive.</summary>
     public async IAsyncEnumerable<string> HandleStreamingAsync(
@@ -35,17 +45,19 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
         await sem.WaitAsync(ct);
         try
         {
+            logger.LogInformation(
+                "[Agent] Runtime mode={Mode} model={Model} baseUrl={BaseUrl}",
+                _ollamaEnabled ? "ollama" : "copilot-default",
+                _ollamaModel,
+                _ollamaBaseUrl);
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
-            // The GitHub Copilot SDK bridge emits CUMULATIVE text on each update:
-            // each update.Text contains the full response so far (not a delta).
-            // We track how many chars we've already yielded and only emit the new suffix.
-            var emitted = 0;
             await foreach (var update in agent.RunStreamingAsync(message, session, null, ct))
             {
-                if (string.IsNullOrEmpty(update.Text) || update.Text.Length <= emitted) continue;
-                yield return update.Text[emitted..];
-                emitted = update.Text.Length;
+                if (!string.IsNullOrEmpty(update.Text))
+                {
+                    yield return update.Text;
+                }
             }
         }
         finally
@@ -56,12 +68,6 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
 
     /// <summary>
     /// Non-streaming handler. Collects the final complete response text.
-    ///
-    /// The Copilot SDK bridge emits a mix of small token deltas followed by a
-    /// final update containing the full cumulative response. We cannot safely
-    /// concatenate (doubles the text) or slice deltas cumulatively (corrupts
-    /// multi-byte chars). Instead, we keep only the **last non-empty Text**
-    /// which is the complete response in the bridge's cumulative protocol.
     /// </summary>
     public async Task<string> HandleAsync(string sessionId, string message, CancellationToken ct = default)
     {
@@ -71,24 +77,21 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
         await sem.WaitAsync(ct);
         try
         {
+            logger.LogInformation(
+                "[Agent] Runtime mode={Mode} model={Model} baseUrl={BaseUrl}",
+                _ollamaEnabled ? "ollama" : "copilot-default",
+                _ollamaModel,
+                _ollamaBaseUrl);
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
             string result = string.Empty;
-            int rawCount = 0;
-            int textCount = 0;
             await foreach (var update in agent.RunStreamingAsync(message, session, null, ct))
             {
-                rawCount++;
-                logger.LogDebug("[{Session}] RAW update #{N}: HasText={Has} Len={Len}",
-                    sessionId, rawCount, !string.IsNullOrEmpty(update.Text), update.Text?.Length ?? 0);
                 if (!string.IsNullOrEmpty(update.Text))
                 {
-                    result = update.Text;   // keep the last (most complete) update
-                    textCount++;
+                    result = update.Text;
                 }
             }
-            logger.LogDebug("[{Session}] ← {Raw} raw / {Text} text updates, final length {Len}",
-                sessionId, rawCount, textCount, result.Length);
             return result;
         }
         finally

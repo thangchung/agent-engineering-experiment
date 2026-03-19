@@ -1,17 +1,17 @@
 {
-    "servers": {
-        "markitdown": {
+	"servers": {
+		"markitdown": {
 			"command": "uvx",
 			"args": [
 				"markitdown-mcp"
 			],
 			"type": "stdio"
 		},
-        "microsoft-docs": {
+		"microsoft-docs": {
 			"url": "https://learn.microsoft.com/api/mcp",
 			"type": "http"
 		},
-        "sequentialthinking": {
+		"sequentialthinking": {
 			"command": "npx",
 			"args": [
 				"-y",
@@ -19,7 +19,7 @@
 			],
 			"type": "stdio"
 		},
-        "aspire": {
+		"aspire": {
 			"type": "stdio",
 			"command": "aspire",
 			"args": [
@@ -27,13 +27,13 @@
 				"start"
 			]
 		},
-        "chrome-devtools": {
+		"chrome-devtools": {
 			"command": "npx",
 			"args": [
 				"chrome-devtools-mcp@latest"
 			]
 		},
-        "playwright": {
+		"playwright": {
 			"command": "npx",
 			"args": [
 				"@playwright/mcp@latest"
@@ -52,5 +52,5 @@
 			"url": "https://mcp.deepwiki.com/mcp",
 			"type": "http"
 		}
-    }
+	}
 }

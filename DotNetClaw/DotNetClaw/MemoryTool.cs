@@ -2,20 +2,9 @@ using System.ComponentModel;
 
 namespace DotNetClaw;
 
-/// <summary>
-/// Agent tools for persistent working memory.
-///
-/// Separate tools per file — constrains the agent to the 3-file protocol
-/// and prevents random file creation in .working-memory/.
-///
-/// Reading is automatic (MindLoader injects all 3 files at session start).
-/// Writing requires these tools because the agent decides WHEN to write.
-/// </summary>
 public sealed class MemoryTool(string mindRoot, ILogger<MemoryTool> logger)
 {
     private readonly string _wmDir = Path.Combine(Path.GetFullPath(mindRoot), ".working-memory");
-
-    // ── Log (append-only, raw session observations) ──────────────────
 
     [Description("Append an observation to the session log. Use for: decisions made, " +
                  "things learned, session handover notes. Raw stream of consciousness — " +
@@ -31,8 +20,6 @@ public sealed class MemoryTool(string mindRoot, ILogger<MemoryTool> logger)
         await File.AppendAllTextAsync(path, $"- [{timestamp}] {entry}\n", ct);
         return "Logged.";
     }
-
-    // ── Rules (append-only, lessons from mistakes) ───────────────────
 
     [Description("Add an operational rule learned from a mistake or discovery. " +
                  "Format: one-liner that prevents the mistake recurring. " +
@@ -51,8 +38,6 @@ public sealed class MemoryTool(string mindRoot, ILogger<MemoryTool> logger)
         await File.AppendAllTextAsync(path, $"- {rule}\n", ct);
         return $"Rule added: {rule}";
     }
-
-    // ── Memory (curated facts, rewritten during consolidation) ───────
 
     [Description("Save a durable fact to long-term memory. Use sparingly — only for " +
                  "important facts that should survive across sessions (user preferences, " +

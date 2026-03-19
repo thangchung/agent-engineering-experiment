@@ -18,7 +18,6 @@ public sealed class ExecTool
     {
         this.logger = logger;
         
-        // Load coffeeshop-cli configuration if available
         if (configuration != null)
         {
             coffeeshopCliExecutablePath = configuration["CoffeeshopCli:ExecutablePath"];
@@ -29,7 +28,6 @@ public sealed class ExecTool
         }
     }
 
-    // Blocklist — dangerous commands that should never be executed
     private static readonly HashSet<string> BlockedCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "rm", "del", "format", "dd", "mkfs", "fdisk", "parted",
@@ -39,14 +37,6 @@ public sealed class ExecTool
         "curl", "wget", "nc", "netcat" // No network access (can be relaxed if needed)
     };
 
-    /// <summary>
-    /// Executes a shell command and returns the output.
-    /// Dangerous commands are blocked for safety.
-    /// </summary>
-    /// <param name="command">The shell command to execute (e.g., "ls -la", "dotnet run -- skills list")</param>
-    /// <param name="workingDirectory">Optional working directory (defaults to current directory)</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>JSON string with exit code, stdout, and stderr</returns>
     [Description("Execute a shell command and return the output. Dangerous commands (rm, sudo, etc.) are blocked for safety. " +
                  "Use this to invoke coffeeshop-cli commands, run dotnet commands, or execute other safe shell operations.")]
     public async Task<string> RunAsync(
@@ -56,10 +46,16 @@ public sealed class ExecTool
         string? workingDirectory = null,
         CancellationToken ct = default)
     {
+        // Validate working directory — LLMs sometimes hallucinate paths from training data
+        if (!string.IsNullOrWhiteSpace(workingDirectory) && !Directory.Exists(workingDirectory))
+        {
+            logger.LogWarning("[ExecTool] Working directory does not exist, ignoring: {Cwd}", workingDirectory);
+            workingDirectory = null;
+        }
+
         logger.LogInformation("[ExecTool] RunAsync called: {Command} (cwd: {Cwd})", 
             command, workingDirectory ?? Directory.GetCurrentDirectory());
 
-        // Rewrite coffeeshop-cli commands to use configured path + PORT
         var originalCommand = command;
         command = RewriteCoffeeshopCliCommand(command);
         
@@ -69,11 +65,9 @@ public sealed class ExecTool
                 originalCommand, command);
         }
 
-        // Safety check — block dangerous commands
         var firstToken = command.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         if (firstToken != null)
         {
-            // Extract command name (handle paths like "/bin/rm" or "./script.sh")
             var cmdName = Path.GetFileName(firstToken);
             
             if (BlockedCommands.Contains(cmdName))
@@ -122,7 +116,6 @@ public sealed class ExecTool
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            // Wait with timeout (30 seconds default)
             await process.WaitForExitAsync(ct);
             
             var exitCode = process.ExitCode;
@@ -175,8 +168,10 @@ public sealed class ExecTool
                 ? trimmed.Substring(15) 
                 : "";
             
-            // Reconstruct with full path
-            return $"\"{coffeeshopCliExecutablePath}\"{restOfCommand}";
+            // Reconstruct with full path (space required between quoted path and args)
+            return string.IsNullOrEmpty(restOfCommand)
+                ? $"\"{coffeeshopCliExecutablePath}\""
+                : $"\"{coffeeshopCliExecutablePath}\" {restOfCommand}";
         }
 
         return command;

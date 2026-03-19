@@ -102,12 +102,10 @@ public sealed class SkillLoaderTool
         if (string.IsNullOrWhiteSpace(coffeeshopCliExecutablePath))
             return JsonSerializer.Serialize(new { error = "CLI mode is not configured" });
 
-        // Cross-platform command construction - ExecTool handles platform-specific shell execution
         var command = $"\"{coffeeshopCliExecutablePath}\" skills list --json";
         
         var result = await execTool.RunAsync(command, ct: ct);
         
-        // Parse ExecTool result
         var execResult = JsonSerializer.Deserialize<ExecToolResult>(result);
         if (execResult?.exit_code != 0)
         {
@@ -118,10 +116,6 @@ public sealed class SkillLoaderTool
         return execResult.stdout;
     }
 
-    /// <summary>
-    /// Loads a specific skill by name, returning the full SKILL.md manifest.
-    /// The manifest contains step-by-step instructions for executing the skill.
-    /// </summary>
     [Description("Load a specific agent skill by name. Returns the full SKILL.md manifest with step-by-step instructions. " +
                  "After loading, follow the instructions in the skill to complete the workflow. " +
                  "Example: load_skill('coffeeshop-counter-service') to help users order coffee.")]
@@ -138,9 +132,6 @@ public sealed class SkillLoaderTool
         return await LoadSkillViaCliAsync(skillName, ct);
     }
 
-    /// <summary>
-    /// Lists menu items from the coffeeshop MCP bridge.
-    /// </summary>
     [Description("List coffee shop menu items from MCP. Use this before building an order.")]
     public async Task<string> ListMenuItemsAsync(CancellationToken ct = default)
     {
@@ -153,9 +144,6 @@ public sealed class SkillLoaderTool
         return callResult.text ?? JsonSerializer.Serialize(new { error = "MCP returned empty response" });
     }
 
-    /// <summary>
-    /// Looks up a customer by email or customer id through MCP.
-    /// </summary>
     [Description("Lookup a customer by email or customer_id via coffeeshop MCP bridge.")]
     public async Task<string> LookupCustomerAsync(
         [Description("Customer email to look up. Prefer this when available.")]
@@ -180,9 +168,6 @@ public sealed class SkillLoaderTool
         return callResult.text ?? JsonSerializer.Serialize(new { error = "MCP returned empty response" });
     }
 
-    /// <summary>
-    /// Submits an order through MCP.
-    /// </summary>
     [Description("Submit an order through coffeeshop MCP bridge. itemsJson must be a JSON array like [{\"item_type\":\"Latte\",\"qty\":1}].")]
     public async Task<string> SubmitOrderAsync(
         [Description("Customer id for the order")]
@@ -225,13 +210,10 @@ public sealed class SkillLoaderTool
         if (string.IsNullOrWhiteSpace(coffeeshopCliExecutablePath))
             return JsonSerializer.Serialize(new { error = "CLI mode is not configured" });
 
-        // Cross-platform command construction with parameter sanitization
-        // Note: Quotes in skillName could break shell parsing, but assuming skill names are safe identifiers
         var command = $"\"{coffeeshopCliExecutablePath}\" skills show \"{skillName}\" --json";
         
         var result = await execTool.RunAsync(command, ct: ct);
         
-        // Parse ExecTool result
         var execResult = JsonSerializer.Deserialize<ExecToolResult>(result);
         if (execResult?.exit_code != 0)
         {
@@ -244,10 +226,6 @@ public sealed class SkillLoaderTool
             });
         }
 
-        // Return the skill content - the agent will handle the JSON format directly
-        // Note: There's a known issue with coffeeshop-cli YAML->JSON serialization
-        // where multi-line strings contain literal newlines. We work around this by
-        // just returning the content as-is for the agent to process.
         logger.LogInformation("[SkillLoaderTool] Skill '{SkillName}' loaded successfully ({Length} bytes)", 
             skillName, execResult.stdout.Length);
         

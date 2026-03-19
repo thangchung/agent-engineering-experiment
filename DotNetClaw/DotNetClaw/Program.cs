@@ -8,18 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// ============================================================================
-// 1. MIND — agent identity (SOUL.md + .github/agents/ + .working-memory/)
-// ============================================================================
-// Mirrors msclaw's IdentityLoader. Assembles SOUL.md + *.agent.md files
-// into the system message. Copilot CLI also reads .github/agents/ natively
-// (via Cwd = mind root) — they reinforce each other.
-
 builder.Services.AddSingleton<MindLoader>();
 
-// ============================================================================
-// 2. MEMORY TOOLS — give the agent write-access to its working-memory files
-// ============================================================================
 builder.Services.AddSingleton<MemoryTool>(sp =>
 {
     var mind   = sp.GetRequiredService<MindLoader>();
@@ -27,9 +17,6 @@ builder.Services.AddSingleton<MemoryTool>(sp =>
     return new MemoryTool(mind.MindRoot, mlogger);
 });
 
-// ============================================================================
-// 2b. EXECUTION + SKILL TOOLS — shell execution and skill loading
-// ============================================================================
 builder.Services.AddSingleton<ExecTool>(sp =>
 {
     var elogger = sp.GetRequiredService<ILogger<ExecTool>>();
@@ -37,20 +24,6 @@ builder.Services.AddSingleton<ExecTool>(sp =>
     return new ExecTool(elogger, config);
 });
 builder.Services.AddSingleton<SkillLoaderTool>();
-
-// ============================================================================
-// 3. GITHUB COPILOT SDK + MAF BRIDGE → AIAgent
-// ============================================================================
-// Microsoft.Agents.AI.GitHub.Copilot provides CopilotClient.AsAIAgent()
-// extension (in GitHub.Copilot.SDK namespace). Goes CopilotClient → AIAgent
-// directly — no IChatClient intermediate needed.
-//
-// Two useful overloads:
-//   AsAIAgent(SessionConfig?, ownsClient, id, name, description)         — sets model
-//   AsAIAgent(ownsClient, id, name, description, tools, instructions)    — sets system prompt
-//
-// We use overload 2 to pass SOUL.md + agent files as the system message.
-// The Copilot CLI also reads .github/agents/ natively via Cwd (msclaw pattern).
 
 builder.Services.AddSingleton<AIAgent>(sp =>
 {
@@ -60,10 +33,12 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     var skillLoader   = sp.GetRequiredService<SkillLoaderTool>();
     var config        = sp.GetRequiredService<IConfiguration>();
     var startupLog    = sp.GetRequiredService<ILoggerFactory>().CreateLogger("DotNetClaw.Startup");
+    var ollamaEnabled = config["Ollama:Enabled"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+    var ollamaBaseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434/v1";
+    var ollamaModel = config["Ollama:Model"]   ?? "qwen3-coder:480b-cloud";
     
     var systemMessage = mind.LoadSystemMessageAsync().GetAwaiter().GetResult();
 
-    // Discover available skills at startup and inject into system message
     var skillsJson = skillLoader.ListSkillsAsync().GetAwaiter().GetResult();
     var mcpMode = string.Equals(config["CoffeeshopCli:Mode"], "mcp", StringComparison.OrdinalIgnoreCase);
     var mcpAvailable = mcpMode ? !HasTopLevelError(skillsJson) : false;
@@ -79,8 +54,7 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     string skillAdvertisement = "";
     try
     {
-        // Extract skill names using regex pattern matching instead of strict JSON parsing
-        // This works around the issue of literal newlines in coffeeshop-cli JSON output
+        // Regex avoids strict JSON parse — coffeeshop-cli output may contain literal newlines
         var skillNames = new List<string>();
         var regex = new System.Text.RegularExpressions.Regex(@"""name"":\s*""([^""]+)""");
         var matches = regex.Matches(skillsJson);
@@ -133,7 +107,6 @@ builder.Services.AddSingleton<AIAgent>(sp =>
         tools.Add(AIFunctionFactory.Create(execTool.RunAsync));
     }
 
-    // Log each registered tool so we can verify names at startup
     foreach (var tool in tools.OfType<AIFunction>())
         startupLog.LogInformation("[Agent] Tool registered: {Name} — {Description}",
             tool.Name,
@@ -142,12 +115,35 @@ builder.Services.AddSingleton<AIAgent>(sp =>
 
     var copilotClient = new CopilotClient(new CopilotClientOptions
     {
-        Cwd       = mind.MindRoot,  // CLI reads .github/agents/ natively (msclaw pattern)
+        Cwd       = mind.MindRoot,
         AutoStart = true,
         UseStdio  = true,
     });
 
-    // AsAIAgent(ownsClient, id, name, description, tools, instructions)
+    if (ollamaEnabled)
+    {
+        startupLog.LogInformation("[Agent] Ollama mode: model={Model} baseUrl={BaseUrl}", ollamaModel, ollamaBaseUrl);
+        var sessionConfig = new SessionConfig
+        {
+            Provider = new ProviderConfig { Type = "openai", BaseUrl = ollamaBaseUrl },
+            Model    = ollamaModel,
+            SystemMessage = new SystemMessageConfig
+            {
+                Mode    = SystemMessageMode.Replace,
+                Content = systemMessage + skillAdvertisement,
+            },
+            Tools = tools.OfType<AIFunction>().ToList(),
+            // approve all tool calls — MAF handles tool security at the channel layer
+            OnPermissionRequest = (_, _) => Task.FromResult(new PermissionRequestResult { Kind = "allow" }),
+        };
+        return copilotClient.AsAIAgent(
+            sessionConfig: sessionConfig,
+            ownsClient:    true,
+            id:            "dotnetclaw",
+            name:          "DotNetClaw",
+            description:   "Personal AI assistant");
+    }
+
     return copilotClient.AsAIAgent(
         ownsClient:   true,
         id:           "dotnetclaw",
@@ -159,41 +155,22 @@ builder.Services.AddSingleton<AIAgent>(sp =>
 
 builder.Services.AddSingleton<ClawRuntime>();
 
-// ============================================================================
-// 4. SLACK CHANNEL (SlackNet Socket Mode)
-// ============================================================================
-// Set secrets: dotnet user-secrets set "Slack:BotToken" "xoxb-..."
-//              dotnet user-secrets set "Slack:AppToken"  "xapp-..."   ← app-level token, connections:write scope
-//              dotnet user-secrets set "Slack:BotUserId" "UXXXXX"
-
 builder.Services.AddSlackChannel(builder.Configuration);
 
-// ============================================================================
-// 5. OPENAPI
-
-// ============================================================================
 builder.Services.AddOpenApi();
-
-// ============================================================================
-// 6. BUILD + ENDPOINTS
-// ============================================================================
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
-// OpenAPI + Scalar UI (dev only)
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference(options => options.WithTitle("DotNetClaw API"));
 }
 
-// Health check
 app.MapGet("/", () => Results.Ok(new { name = "DotNetClaw", status = "running" }));
 
-// Slack events endpoint — UseSlackNet registers middleware + /slack/events route
-// Must be called on WebApplication (IApplicationBuilder), not IEndpointRouteBuilder
 app.MapSlack(builder.Configuration);
 
 app.Run();
