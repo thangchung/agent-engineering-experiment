@@ -1,0 +1,297 @@
+openapi: 3.0.3
+info:
+  title: Open Brewery DB
+  version: v1
+  description: >
+    Public REST API for brewery data. Base URL: https://api.openbrewerydb.org/v1
+
+servers:
+  - url: https://api.openbrewerydb.org/v1
+
+components:
+  schemas:
+    Brewery:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the brewery.
+        name:
+          type: string
+          description: Brewery name.
+        brewery_type:
+          type: string
+          description: >
+            Type of brewery. One of: micro, nano, regional, brewpub, large,
+            planning, bar, contract, proprietor, closed.
+        address_1:
+          type: string
+          nullable: true
+          description: Primary street address.
+        address_2:
+          type: string
+          nullable: true
+          description: Secondary address line.
+        address_3:
+          type: string
+          nullable: true
+          description: Third address line.
+        city:
+          type: string
+          description: City name.
+        state_province:
+          type: string
+          description: State or province.
+        postal_code:
+          type: string
+          description: Postal or ZIP code.
+        country:
+          type: string
+          description: Country name.
+        longitude:
+          type: number
+          nullable: true
+          description: Longitude coordinate.
+        latitude:
+          type: number
+          nullable: true
+          description: Latitude coordinate.
+        phone:
+          type: string
+          nullable: true
+          description: Contact phone number.
+        website_url:
+          type: string
+          nullable: true
+          description: Brewery website URL.
+        state:
+          type: string
+          description: State abbreviation or name. (deprecated)
+        street:
+          type: string
+          nullable: true
+          description: Street address. (deprecated)
+    Meta:
+      type: object
+      properties:
+        total:
+          type: string
+          description: Total number of breweries matching the filter.
+        page:
+          type: string
+          description: Current page number.
+        per_page:
+          type: string
+          description: Number of results per page.
+
+paths:
+  /breweries/{obdb-id}:
+    get:
+      operationId: getSingleBrewery
+      summary: Single Brewery
+      description: Get a single brewery by its Open Brewery DB ID.
+      parameters:
+        - name: obdb-id
+          in: path
+          required: true
+          description: Unique identifier for the brewery.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A single brewery object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brewery'
+
+  /breweries:
+    get:
+      operationId: listBreweries
+      summary: List Breweries
+      description: Returns a list of breweries with optional filters and pagination.
+      parameters:
+        - name: by_city
+          in: query
+          description: Filter by city. Use underscores or URL encoding for spaces.
+          schema:
+            type: string
+        - name: by_country
+          in: query
+          description: Filter by country. Use underscores or URL encoding for spaces.
+          schema:
+            type: string
+        - name: by_dist
+          in: query
+          description: Sort by distance from an origin point expressed as "latitude,longitude".
+          schema:
+            type: string
+        - name: by_ids
+          in: query
+          description: Comma-separated list of brewery IDs to return.
+          schema:
+            type: string
+        - name: by_name
+          in: query
+          description: Filter by brewery name. Use underscores or URL encoding for spaces.
+          schema:
+            type: string
+        - name: by_state
+          in: query
+          description: Filter by full state name (no abbreviations). Use underscores or URL encoding for spaces.
+          schema:
+            type: string
+        - name: by_postal
+          in: query
+          description: Filter by postal code (5-digit or postal+4 with hyphen/underscore).
+          schema:
+            type: string
+        - name: by_type
+          in: query
+          description: >
+            Filter by brewery type. One of: micro, nano, regional, brewpub,
+            large, planning, bar, contract, proprietor, closed.
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number for pagination. Default 1.
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          description: Number of breweries per page. Default 50, maximum 200.
+          schema:
+            type: integer
+        - name: sort
+          in: query
+          description: >
+            Sort by one or more fields using asc or desc.
+            Example: "name:asc" or "city:desc,name:asc".
+            Not compatible with by_dist.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Array of brewery objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Brewery'
+
+  /breweries/random:
+    get:
+      operationId: getRandomBrewery
+      summary: Random Brewery
+      description: >
+        Get one or more random breweries. Returns a single brewery object when
+        size is omitted, or an array when size > 1.
+      parameters:
+        - name: size
+          in: query
+          description: Number of random breweries to return. Default 1, maximum 50.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: One or more random brewery objects.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Brewery'
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/Brewery'
+
+  /breweries/search:
+    get:
+      operationId: searchBreweries
+      summary: Search Breweries
+      description: >
+        Full-text search against brewery names. Supports partial,
+        case-insensitive matching. Returns an empty array when no results match.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Search term to match against brewery names.
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          description: Number of results per page. Default 50, maximum 200.
+          schema:
+            type: integer
+        - name: page
+          in: query
+          description: Page number for pagination. Default 1.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Array of matching brewery objects. Empty array if no matches.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Brewery'
+
+  /breweries/meta:
+    get:
+      operationId: getBreweriesMetadata
+      summary: Metadata
+      description: >
+        Returns metadata (total count, page, per_page) for the brewery dataset.
+        Accepts the same filters as List Breweries.
+      parameters:
+        - name: by_city
+          in: query
+          schema:
+            type: string
+        - name: by_country
+          in: query
+          schema:
+            type: string
+        - name: by_dist
+          in: query
+          schema:
+            type: string
+        - name: by_ids
+          in: query
+          schema:
+            type: string
+        - name: by_name
+          in: query
+          schema:
+            type: string
+        - name: by_state
+          in: query
+          schema:
+            type: string
+        - name: by_postal
+          in: query
+          schema:
+            type: string
+        - name: by_type
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Metadata about the matching brewery set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meta'

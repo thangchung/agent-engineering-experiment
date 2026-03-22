@@ -1,0 +1,135 @@
+@page "/"
+@page "/chat"
+@inject TestWeb.Services.CopilotChatService ChatService
+@using Markdig
+
+<PageTitle>Copilot Chat</PageTitle>
+
+<h1>Copilot Chat (Tool Search + Code Mode)</h1>
+<p>Use this chat to exercise MCP tools through GitHub Copilot SDK.</p>
+
+<div class="chat-samples mb-3">
+    <div class="fw-semibold mb-2">Sample prompts</div>
+    <ul class="mb-0">
+        <li>what tools are available?</li>
+        <li>show only tools for brewery search by city</li>
+        <li>show concise parameter schema for brewery_search</li>
+        <li>show full json schema for brewery_get and brewery_list</li>
+        <li>get random brewery</li>
+        <li>find breweries in San Diego</li>
+        <li>how many brewery are there</li>
+        <li>find moon breweries and return top 5 as name and city only</li>
+        <li>call brewery_missing and explain the error briefly</li>
+        <li>give me a short summary and list only successful tool calls</li>
+    </ul>
+</div>
+
+<div class="chat-layout">
+    <div class="chat-actions mb-3">
+        <button class="btn btn-outline-secondary" @onclick="ResetSessionAsync" disabled="@isSending">Reset Session</button>
+    </div>
+
+    <div class="chat-log mb-3">
+        <p class="text-muted mb-2">@statusText</p>
+
+        @if (messages.Count > 0)
+        {
+            @foreach (ChatLine line in messages)
+            {
+                <div class="chat-line @(line.Role == "user" ? "chat-user" : "chat-assistant")">
+                    <div class="chat-role">@line.RoleLabel</div>
+                    @if (line.Metrics is not null)
+                    {
+                        <div class="text-muted small mb-1">
+                            prompt @line.Metrics.PromptTokens tok, completion @line.Metrics.CompletionTokens tok, total @line.Metrics.TotalTokens tok, @line.Metrics.ElapsedMilliseconds ms
+                        </div>
+                    }
+                    @if (line.Role == "assistant")
+                    {
+                        <div class="chat-content markdown-content">@((MarkupString)RenderMarkdown(line.Content))</div>
+                    }
+                    else
+                    {
+                        <div class="chat-content">@line.Content</div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="chat-compose">
+        <textarea class="form-control mb-2"
+                  rows="4"
+                  placeholder="Type your prompt here..."
+                  @bind="promptText"></textarea>
+        <button class="btn btn-primary" @onclick="SendAsync" disabled="@isSending">@(isSending ? "Sending..." : "Send")</button>
+    </div>
+</div>
+
+@code {
+    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
+        .DisableHtml()
+        .UsePipeTables()
+        .UseEmphasisExtras()
+        .Build();
+
+    private readonly List<ChatLine> messages = [];
+    private string promptText = string.Empty;
+    private string statusText = "Send a message to start.";
+    private bool isSending;
+
+    private static string RenderMarkdown(string content)
+    {
+        return Markdown.ToHtml(content ?? string.Empty, MarkdownPipeline);
+    }
+
+    private async Task SendAsync()
+    {
+        if (isSending || string.IsNullOrWhiteSpace(promptText))
+        {
+            return;
+        }
+
+        string userPrompt = promptText.Trim();
+        promptText = string.Empty;
+
+        messages.Add(new ChatLine("user", "You", userPrompt));
+
+        isSending = true;
+        try
+        {
+            TestWeb.Services.CopilotChatService.ChatTurnMetrics turn = await ChatService.SendPromptAsync(userPrompt);
+            messages.Add(new ChatLine(
+                "assistant",
+                "Assistant",
+                turn.Content,
+                new TurnMetrics(turn.PromptTokens, turn.CompletionTokens, turn.TotalTokens, turn.ElapsedMilliseconds)));
+            statusText = $"Last turn: prompt {turn.PromptTokens} tok, completion {turn.CompletionTokens} tok, total {turn.TotalTokens} tok, {turn.ElapsedMilliseconds} ms.";
+        }
+        catch (Exception ex)
+        {
+            messages.Add(new ChatLine("assistant", "Assistant (error)", ex.Message));
+            statusText = "Last turn failed. No metrics available.";
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+
+    private async Task ResetSessionAsync()
+    {
+        if (isSending)
+        {
+            return;
+        }
+
+        await ChatService.ResetAsync();
+        messages.Clear();
+        statusText = "Send a message to start.";
+    }
+
+    private sealed record TurnMetrics(int PromptTokens, int CompletionTokens, int TotalTokens, long ElapsedMilliseconds);
+
+    private sealed record ChatLine(string Role, string RoleLabel, string Content, TurnMetrics? Metrics = null);
+}
