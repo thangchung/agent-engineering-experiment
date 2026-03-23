@@ -1,11 +1,4 @@
-using System.Text.Json;
-
 namespace McpServer.CodeMode;
-
-/// <summary>
-/// Bridge delegate used by runners to invoke registered tools.
-/// </summary>
-public delegate Task<object?> ToolBridge(string toolName, JsonElement args, CancellationToken ct);
 
 /// <summary>
 /// Contract for execution backends used by execute flow.
@@ -13,7 +6,14 @@ public delegate Task<object?> ToolBridge(string toolName, JsonElement args, Canc
 public interface ISandboxRunner
 {
     /// <summary>
-    /// Runs code using tool bridge with runtime limits and cancellation.
+    /// Human-readable guide describing the code syntax this runner expects.
+    /// Exposed via the <c>get_execute_syntax</c> MCP tool so the LLM can discover
+    /// the correct language and conventions before calling <c>execute</c>.
     /// </summary>
-    Task<RunnerResult> RunAsync(string code, ToolBridge bridge, CancellationToken ct);
+    string SyntaxGuide { get; }
+
+    /// <summary>
+    /// Runs code with runtime limits and cancellation.
+    /// </summary>
+    Task<RunnerResult> RunAsync(string code, CancellationToken ct);
 }

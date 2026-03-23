@@ -1,6 +1,6 @@
 @page "/"
 @page "/chat"
-@inject TestWeb.Services.CopilotChatService ChatService
+@inject TestWeb.Services.CopilotChatApiClient ChatService
 @using Markdig
 
 <PageTitle>Copilot Chat</PageTitle>
@@ -96,9 +96,11 @@
         messages.Add(new ChatLine("user", "You", userPrompt));
 
         isSending = true;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            TestWeb.Services.CopilotChatService.ChatTurnMetrics turn = await ChatService.SendPromptAsync(userPrompt);
+            TestWeb.Services.CopilotChatApiClient.ChatTurnMetrics turn = await ChatService.SendPromptAsync(userPrompt);
+            stopwatch.Stop();
             messages.Add(new ChatLine(
                 "assistant",
                 "Assistant",
@@ -108,8 +110,9 @@
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             messages.Add(new ChatLine("assistant", "Assistant (error)", ex.Message));
-            statusText = "Last turn failed. No metrics available.";
+            statusText = $"Last turn failed after {stopwatch.ElapsedMilliseconds} ms. Metrics are unavailable because the request did not complete successfully.";
         }
         finally
         {

@@ -57,7 +57,14 @@ The UI uses `call_tool` with the OpenBrewery compatibility aliases (`brewery_get
 dotnet run --project src/AppHost/AppHost.csproj
 ```
 
-The AppHost is intentionally minimal and ready for expanding resource wiring in later phases.
+AppHost starts:
+- `mcp-server`
+- `test-web`
+- `opensandbox-server` container (`opensandbox/server:v0.1.8`)
+
+The OpenSandbox container is configured for Docker runtime mode via a mounted config file ([`deploy/opensandbox.config.toml`](deploy/opensandbox.config.toml)). This ensures the server uses Docker execution instead of Kubernetes, which requires no kube-config setup for local development.
+
+If Docker/OrbStack is unavailable, AppHost cannot start the OpenSandbox resource.
 
 ## Docker Runbook
 
@@ -110,3 +117,10 @@ kubectl -n mcp-experiments logs deploy/mcp-server
 - Test failures: run filtered tests to isolate (`dotnet test --filter ...`).
 - Container exits quickly: run without detach and inspect logs.
 - AKS image pull error: verify registry auth and image tag.
+- Aspire shows `Cannot connect to the Docker daemon ... .orbstack/run/docker.sock`:
+	- Start Docker Desktop or OrbStack.
+	- Verify daemon access: `docker info`.
+	- Check current context: `docker context ls`.
+	- If OrbStack context is selected but OrbStack is stopped, switch context (`docker context use default`) or start OrbStack.
+- Aspire/OpenSandbox pull error for `ghcr.io/alibaba/opensandbox/server:*: denied`:
+	- Use Docker Hub image `opensandbox/server:v0.1.8` (already configured in AppHost).

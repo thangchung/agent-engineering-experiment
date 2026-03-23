@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using System.ComponentModel;
+using System.Linq;
 using System.Text.Json;
 using McpServer.CodeMode;
 using McpServer.Registry;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 
 namespace McpServer.Tools;
@@ -30,9 +33,26 @@ public static class McpToolHandlers
         [Description("Natural language search query, e.g. \"search breweries by city\"")] string query,
         [Description("Maximum number of results to return")] int limit,
         [FromServices] MetaTools metaTools,
-        [FromServices] UserContext context)
+        [FromServices] UserContext context,
+        [FromServices] ILoggerFactory loggerFactory)
     {
-        return metaTools.SearchTools(query, limit, context);
+        IReadOnlyList<ToolDefinition> results = metaTools.SearchTools(query, limit, context);
+
+        Activity.Current?.SetTag("mcp.handler.name", nameof(search_tools));
+        Activity.Current?.SetTag("mcp.handler.results.count", results.Count);
+
+        ILogger logger = loggerFactory.CreateLogger(typeof(McpToolHandlers));
+        logger.LogInformation(
+            "MCP handler {HandlerName} returned {ResultCount} tools for query {Query} with limit {Limit}: {ToolNames}.",
+            nameof(search_tools),
+            results.Count,
+            query,
+            limit,
+            results.Select(static t => t.Name));
+
+            Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", results.Select(static r => r.Name)));
+
+        return results;
     }
 
     /// <summary>
@@ -60,11 +80,29 @@ public static class McpToolHandlers
         [Description("Search query for tool discovery")] string query,
         [FromServices] DiscoveryTools discoveryTools,
         [FromServices] UserContext context,
+        [FromServices] ILoggerFactory loggerFactory,
         [Description("Detail level: Brief (default), Detailed, or Full")] SchemaDetailLevel detail = SchemaDetailLevel.Brief,
         [Description("Optional tag filters. When omitted, all tags are included.")] IReadOnlyList<string>? tags = null,
         [Description("Optional maximum results. Defaults to server discovery default.")] int? limit = null)
     {
-        return discoveryTools.Search(query, context, detail, tags, limit);
+        DiscoverySearchResponse response = discoveryTools.Search(query, context, detail, tags, limit);
+
+        Activity.Current?.SetTag("mcp.handler.name", nameof(search));
+        Activity.Current?.SetTag("mcp.handler.results.count", response.Results.Count);
+        Activity.Current?.SetTag("mcp.handler.results.totalMatched", response.TotalMatched);
+
+        ILogger logger = loggerFactory.CreateLogger(typeof(McpToolHandlers));
+        logger.LogInformation(
+            "MCP handler {HandlerName} returned {ResultCount} tools out of {TotalMatched} matches for query {Query}: {ToolNames}.",
+            nameof(search),
+            response.Results.Count,
+            response.TotalMatched,
+            query,
+            response.Results.Select(static r => r.Name));
+
+        Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", response.Results.Select(static r => r.Name)));
+
+        return response;
     }
 
     /// <summary>
@@ -81,39 +119,30 @@ public static class McpToolHandlers
     }
 
     /// <summary>
-    /// Executes constrained code that can chain tool calls and returns only the final value.
-    /// Intermediate values inside the code block are not returned to reduce token cost.
-    ///
-    /// <para>Supported statement forms only — no JavaScript expressions, method chains, or transformations:</para>
-    /// <list type="bullet">
-    /// <item><c>[const|let|var] varName = await call_tool("name", {"key": value});</c></item>
-    /// <item><c>return varName;</c></item>
-    /// <item><c>return await call_tool("name", {"key": value});</c></item>
-    /// </list>
-    /// <example>
-    /// <code>
-    /// const a = await call_tool("brewery_search", {"by_city": "Portland"});
-    /// return a;
-    /// </code>
-    /// </example>
+    /// Returns the exact code syntax guide for the <c>execute</c> tool based on the active runner.
+    /// Call this BEFORE writing code for <c>execute</c> to learn the required language and conventions.
+    /// </summary>
+    [McpServerTool, Description("Returns the code syntax guide for the execute tool. Call this first to learn whether to write DSL or Python code before calling execute.")]
+    public static string get_execute_syntax([FromServices] ISandboxRunner runner)
+    {
+        return runner.SyntaxGuide;
+    }
+
+    /// <summary>
+    /// Executes constrained code and returns only the final value.
+    /// The required code syntax depends on the configured runner — call <c>get_execute_syntax</c> first.
     /// </summary>
     [McpServerTool, Description("""
-        Execute constrained code that chains await call_tool() statements and returns the final result.
-        ONLY these statement forms are allowed — no JavaScript expressions, map/filter, or method chains:
-                    [const|let|var] varName = await call_tool("toolName", {"argKey": argValue});
-                    return varName;
-                    return await call_tool("toolName", {"argKey": argValue});
-                To project specific fields from an array result, use the built-in select_fields virtual tool:
-                    const projected = await call_tool("select_fields", {data: varName, fields: "field1,field2"});
-                Argument object keys may be quoted or unquoted. Always end statements with a semicolon.
+        Execute constrained code and return the final result.
+        IMPORTANT: call get_execute_syntax first to learn the exact syntax required by the active runner.
+        The runner will reject code written in the wrong style with an error message.
         """)]
     public static async Task<object?> execute(
-        [Description("Code string using only supported statement forms: variable assignments with await call_tool() and a return statement.")] string code,
+        [Description("Code string written in the syntax returned by get_execute_syntax.")] string code,
         [FromServices] ExecuteTool executeTool,
-        [FromServices] UserContext context,
         CancellationToken ct)
     {
-        ExecuteResponse response = await executeTool.ExecuteAsync(code, context, ct);
+        ExecuteResponse response = await executeTool.ExecuteAsync(code, ct);
         return response.FinalValue;
     }
 }

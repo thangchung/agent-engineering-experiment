@@ -28,6 +28,10 @@
 		"deepwiki": {
 			"url": "https://mcp.deepwiki.com/mcp",
 			"type": "http"
+		},
+		"excalidraw": {
+			"url": "https://mcp.excalidraw.com",
+			"type": "http"
 		}
 	}
 }

@@ -15,7 +15,7 @@ public sealed class WorkflowCoordinator(ExecuteTool executeTool)
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentNullException.ThrowIfNull(context);
 
-        ExecuteResponse response = await executeTool.ExecuteAsync(code, context, ct);
+        ExecuteResponse response = await executeTool.ExecuteAsync(code, ct);
         return response.FinalValue;
     }
 }

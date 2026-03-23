@@ -8,10 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="GitHub.Copilot.SDK" Version="0.1.33-preview.3" />
     <PackageReference Include="Markdig" Version="0.40.0" />
-    <PackageReference Include="ModelContextProtocol" Version="1.1.0" />
-    <PackageReference Include="TiktokenSharp" Version="1.1.5" />
   </ItemGroup>
 
   <ItemGroup>

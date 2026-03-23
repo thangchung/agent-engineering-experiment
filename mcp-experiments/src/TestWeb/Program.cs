@@ -5,10 +5,22 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
+int configuredApiTimeoutSeconds = builder.Configuration.GetValue<int?>("Copilot:ApiTimeoutSeconds") ?? 300;
+if (configuredApiTimeoutSeconds <= 0)
+{
+    configuredApiTimeoutSeconds = 300;
+}
+
+TimeSpan apiTimeout = TimeSpan.FromSeconds(configuredApiTimeoutSeconds);
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
-builder.Services.AddScoped<CopilotChatService>();
+builder.Services.AddHttpClient<CopilotChatApiClient>(httpClient =>
+{
+    httpClient.Timeout = apiTimeout;
+});
+builder.Services.AddScoped<CopilotChatApiClient>();
 
 var app = builder.Build();
 

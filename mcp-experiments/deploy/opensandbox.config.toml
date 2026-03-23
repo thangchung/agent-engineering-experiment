@@ -1,0 +1,21 @@
+# OpenSandbox server configuration for local Docker-based sandbox execution.
+# Based on the official example.config.toml shipped in opensandbox/server image.
+# Copy to ~/.sandbox.toml or set SANDBOX_CONFIG_PATH env to point at it.
+
+[server]
+host = "0.0.0.0"
+port = 8080
+log_level = "INFO"
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd:v1.0.7"
+
+[docker]
+network_mode = "bridge"
+no_new_privileges = true
+pids_limit = 4096
+
+[ingress]
+mode = "direct"
+

@@ -1,126 +1,123 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using McpServer.CodeMode;
 using McpServer.Registry;
+using System.Text.Json;
 
 namespace McpServer.UnitTests.CodeMode;
 
 public sealed class ExecuteAndRunnerTests
 {
     [Fact]
-    public async Task LocalConstrainedRunner_MaxToolCallsEnforced()
+    public async Task LocalConstrainedRunner_RejectsMetaToolUsage()
     {
-        LocalConstrainedRunner runner = new(TimeSpan.FromSeconds(2), maxToolCalls: 1, NullLogger<LocalConstrainedRunner>.Instance);
+        LocalConstrainedRunner runner = new(TimeSpan.FromSeconds(2), maxToolCalls: 10, NullLogger<LocalConstrainedRunner>.Instance);
         string code = """
-            a = await call_tool("one", {})
-            return await call_tool("two", {})
+            result = call_tool("brewery_search", {"query": "moon"})
             """;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            runner.RunAsync(code, (_, _, _) => Task.FromResult<object?>("ok"), CancellationToken.None));
+        InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            runner.RunAsync(code, CancellationToken.None));
+
+        Assert.Contains("isolated", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task LocalConstrainedRunner_TimeoutStopsExecution()
     {
-        LocalConstrainedRunner runner = new(TimeSpan.FromMilliseconds(50), maxToolCalls: 3, NullLogger<LocalConstrainedRunner>.Instance);
+        LocalConstrainedRunner runner = new(TimeSpan.FromMilliseconds(50), maxToolCalls: 10, NullLogger<LocalConstrainedRunner>.Instance);
         string code = """
-            return await call_tool("slow", {})
+            import time
+            time.sleep(0.2)
+            result = 1
             """;
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            runner.RunAsync(
-                code,
-                async (_, _, ct) =>
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(200), ct);
-                    return "never";
-                },
-                CancellationToken.None));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runner.RunAsync(code, CancellationToken.None));
     }
 
     [Fact]
-    public async Task ExecuteTool_CodeChainReturnsFinalValueOnly()
+    public async Task LocalConstrainedRunner_MultilinePythonExecutesSuccessfully()
     {
-        ToolRegistry registry = new(
-        [
-            TestTools.Create(
-                "double",
-                "Double",
-                "{}",
-                handler: (args, _) =>
-                {
-                    int x = args.TryGetProperty("x", out JsonElement xElement) ? xElement.GetInt32() : 0;
-                    return Task.FromResult<object?>(TestJson.Parse($"{{\"result\":{x * 2}}}"));
-                }),
-            TestTools.Create(
-                "add_one",
-                "Add one",
-                "{}",
-                handler: (args, _) =>
-                {
-                    int x = args.TryGetProperty("x", out JsonElement xElement) ? xElement.GetInt32() : 0;
-                    return Task.FromResult<object?>(TestJson.Parse($"{{\"result\":{x + 1}}}"));
-                }),
-        ]);
-
-        ExecuteTool executeTool = new(registry, new LocalConstrainedRunner(TimeSpan.FromSeconds(2), 10, NullLogger<LocalConstrainedRunner>.Instance));
+        LocalConstrainedRunner runner = new(TimeSpan.FromSeconds(5), maxToolCalls: 10, NullLogger<LocalConstrainedRunner>.Instance);
         string code = """
-            a = await call_tool("double", {"x": 3})
-            b = await call_tool("add_one", {"x": a["result"]})
-            return b
+            import json
+            data = [{"name": "Moon", "city": "San Diego"}, {"name": "Sun", "city": "LA"}]
+            result = [{"name": x["name"], "city": x["city"]} for x in data]
             """;
 
-        ExecuteResponse response = await executeTool.ExecuteAsync(code, new UserContext(), CancellationToken.None);
+        RunnerResult result = await runner.RunAsync(code, CancellationToken.None);
 
-        JsonElement final = Assert.IsType<JsonElement>(response.FinalValue);
-        Assert.Equal(7, final.GetProperty("result").GetInt32());
+        JsonElement final = Assert.IsType<JsonElement>(result.FinalValue);
+        Assert.Equal(JsonValueKind.Array, final.ValueKind);
+        Assert.Equal(2, final.GetArrayLength());
+        Assert.Equal("Moon", final[0].GetProperty("name").GetString());
+        Assert.Equal(0, result.CallsExecuted);
     }
 
     [Fact]
-    public async Task ExecuteTool_ReturnExpressionCanCallTool()
+    public async Task LocalConstrainedRunner_ProvidesRequestsCompatibilityModule()
     {
-        ToolRegistry registry = new(
-        [
-            TestTools.Create(
-                "ping",
-                "Ping",
-                "{}",
-                handler: (_, _) => Task.FromResult<object?>(TestJson.Parse("{\"result\":\"pong\"}"))),
-        ]);
-
-        ExecuteTool executeTool = new(registry, new LocalConstrainedRunner(TimeSpan.FromSeconds(2), 10, NullLogger<LocalConstrainedRunner>.Instance));
+        LocalConstrainedRunner runner = new(TimeSpan.FromSeconds(5), maxToolCalls: 10, NullLogger<LocalConstrainedRunner>.Instance);
         string code = """
-            return await call_tool("ping", {})
+            import requests
+            result = {
+                "has_get": hasattr(requests, "get"),
+                "has_request": hasattr(requests, "request")
+            }
             """;
 
-        ExecuteResponse response = await executeTool.ExecuteAsync(code, new UserContext(), CancellationToken.None);
+        RunnerResult result = await runner.RunAsync(code, CancellationToken.None);
 
-        JsonElement final = Assert.IsType<JsonElement>(response.FinalValue);
-        Assert.Equal("pong", final.GetProperty("result").GetString());
+        JsonElement final = Assert.IsType<JsonElement>(result.FinalValue);
+        Assert.True(final.GetProperty("has_get").GetBoolean());
+        Assert.True(final.GetProperty("has_request").GetBoolean());
+    }
+
+    [Fact]
+    public async Task LocalConstrainedRunner_WhenHttp403Occurs_ReturnsHelpfulHint()
+    {
+        LocalConstrainedRunner runner = new(TimeSpan.FromSeconds(5), maxToolCalls: 10, NullLogger<LocalConstrainedRunner>.Instance);
+        string code = """
+            raise Exception("HTTP Error 403: Forbidden")
+            """;
+
+        InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            runner.RunAsync(code, CancellationToken.None));
+
+        Assert.Contains("HTTP 403", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("User-Agent", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ReturnsRunnerFinalValueOnly()
+    {
+        ISandboxRunner runner = new StubRunner(new RunnerResult(new { total = 42 }, 0));
+        ExecuteTool executeTool = new(runner);
+
+        ExecuteResponse response = await executeTool.ExecuteAsync("result = 42", CancellationToken.None);
+
+        Assert.NotNull(response.FinalValue);
     }
 
     [Fact]
     public async Task WorkflowCoordinator_DelegatesToExecuteTool()
     {
-        ToolRegistry registry = new(
-        [
-            TestTools.Create(
-                "single",
-                "Single",
-                "{}",
-                handler: (_, _) => Task.FromResult<object?>(TestJson.Parse("{\"result\":\"done\"}"))),
-        ]);
-
-        ExecuteTool executeTool = new(registry, new LocalConstrainedRunner(TimeSpan.FromSeconds(2), 10, NullLogger<LocalConstrainedRunner>.Instance));
+        ISandboxRunner runner = new StubRunner(new RunnerResult("done", 0));
+        ExecuteTool executeTool = new(runner);
         WorkflowCoordinator coordinator = new(executeTool);
 
-        object? result = await coordinator.RunAsync(
-            "return await call_tool(\"single\", {})",
-            new UserContext(),
-            CancellationToken.None);
+        object? result = await coordinator.RunAsync("result = 'done'", new UserContext(), CancellationToken.None);
 
-        JsonElement final = Assert.IsType<JsonElement>(result);
-        Assert.Equal("done", final.GetProperty("result").GetString());
+        Assert.Equal("done", result);
+    }
+
+    private sealed class StubRunner(RunnerResult nextResult) : ISandboxRunner
+    {
+        public string SyntaxGuide => "stub";
+
+        public Task<RunnerResult> RunAsync(string code, CancellationToken ct)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(code);
+            return Task.FromResult(nextResult);
+        }
     }
 }

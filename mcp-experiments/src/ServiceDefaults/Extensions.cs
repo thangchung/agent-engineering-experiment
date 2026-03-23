@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -26,11 +27,24 @@ public static class Extensions
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
 
+        int configuredTimeoutSeconds = builder.Configuration.GetValue<int?>("HttpClient:StandardResilienceTimeoutSeconds") ?? 300;
+        if (configuredTimeoutSeconds <= 0)
+        {
+            configuredTimeoutSeconds = 300;
+        }
+
+        TimeSpan standardResilienceTimeout = TimeSpan.FromSeconds(configuredTimeoutSeconds);
+
         builder.Services.AddServiceDiscovery();
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            http.AddStandardResilienceHandler();
+            http.AddStandardResilienceHandler(options =>
+            {
+                options.TotalRequestTimeout.Timeout = standardResilienceTimeout;
+                options.AttemptTimeout.Timeout = standardResilienceTimeout;
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(Math.Max(configuredTimeoutSeconds * 2, 60));
+            });
             http.AddServiceDiscovery();
         });
 
@@ -62,11 +76,12 @@ public static class Extensions
                 tracing
                     .AddSource(builder.Environment.ApplicationName)
                     .AddSource(
-                        "TestWeb.CopilotChatService",
+                        "McpServer.CopilotChatService",
                         "McpServer.MetaTools",
                         "McpServer.CodeMode.DiscoveryTools",
                         "McpServer.CodeMode.ExecuteTool",
-                        "McpServer.CodeMode.LocalConstrainedRunner")
+                        "McpServer.CodeMode.LocalConstrainedRunner",
+                        "McpServer.CodeMode.OpenSandboxRunner")
                     .AddAspNetCoreInstrumentation(options =>
                     {
                         options.Filter = context =>

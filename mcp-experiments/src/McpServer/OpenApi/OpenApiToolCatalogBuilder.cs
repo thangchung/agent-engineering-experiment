@@ -14,6 +14,16 @@ namespace McpServer.OpenApi;
 /// </summary>
 public static class OpenApiToolCatalogBuilder
 {
+    private static readonly HttpClient SpecHttpClient = new();
+
+    /// <summary>
+    /// Describes one OpenAPI source loaded from a local file path or remote URL.
+    /// </summary>
+    /// <param name="Name">Stable source name used when disambiguating duplicate tool names.</param>
+    /// <param name="Location">Absolute or relative file path, or absolute HTTP(S) URL, for the OpenAPI document.</param>
+    /// <param name="BaseUrlOverride">Optional explicit base URL override used instead of the document's servers list.</param>
+    public sealed record OpenApiSourceDefinition(string Name, string Location, string? BaseUrlOverride = null);
+
     /// <summary>
     /// Resolves the OpenAPI spec path from configuration, environment, output, or repository layout.
     /// </summary>
@@ -37,47 +47,11 @@ public static class OpenApiToolCatalogBuilder
             return explicitPath;
         }
 
-        var candidates = new List<string>
-        {
-            Path.Combine(baseDirectory, "contracts", "openapi.yaml"),
-            Path.Combine(baseDirectory, "contracts", "openapi.yml"),
-            Path.Combine(baseDirectory, "contracts", "openapi.json"),
-            Path.Combine(baseDirectory, "openapi.yaml"),
-            Path.Combine(baseDirectory, "openapi.yml"),
-            Path.Combine(baseDirectory, "openapi.json"),
-        };
-
-        foreach (string path in candidates)
-        {
-            if (File.Exists(path))
-            {
-                return path;
-            }
-        }
-
-        string[] contractDirectories =
-        [
-            Path.Combine(baseDirectory, "contracts"),
-            Path.GetFullPath(Path.Combine(baseDirectory, "../../../../contracts")),
-        ];
-
-        var discoveredSpecs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        string[] patterns = ["*.openapi.yaml", "*.openapi.yml", "*.openapi.json", "openapi.yaml", "openapi.yml", "openapi.json"];
-
-        foreach (string directory in contractDirectories.Where(Directory.Exists))
-        {
-            foreach (string pattern in patterns)
-            {
-                foreach (string file in Directory.GetFiles(directory, pattern, SearchOption.TopDirectoryOnly))
-                {
-                    discoveredSpecs.Add(Path.GetFullPath(file));
-                }
-            }
-        }
+        IReadOnlyList<string> discoveredSpecs = DiscoverSpecPaths(baseDirectory);
 
         if (discoveredSpecs.Count == 1)
         {
-            return discoveredSpecs.Single();
+            return discoveredSpecs[0];
         }
 
         string found = discoveredSpecs.Count == 0
@@ -91,45 +65,101 @@ public static class OpenApiToolCatalogBuilder
     }
 
     /// <summary>
+    /// Resolves all configured OpenAPI sources from configuration, environment, output, or repository layout.
+    /// </summary>
+    public static IReadOnlyList<OpenApiSourceDefinition> ResolveSources(IConfiguration configuration, string baseDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+
+        List<OpenApiSourceDefinition> configuredSources = ResolveConfiguredSources(configuration, baseDirectory);
+        if (configuredSources.Count > 0)
+        {
+            return configuredSources;
+        }
+
+        string? configured = configuration["OpenApi:SpecPath"] ?? Environment.GetEnvironmentVariable("OPENAPI_SPEC_PATH");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            string specPath = ResolveSpecPath(configuration, baseDirectory);
+            return
+            [
+                new OpenApiSourceDefinition(
+                    InferSourceName(specPath),
+                    specPath,
+                    configuration["OpenApi:BaseUrl"]),
+            ];
+        }
+
+        IReadOnlyList<string> discoveredSpecs = DiscoverSpecPaths(baseDirectory);
+        if (discoveredSpecs.Count > 0)
+        {
+            return discoveredSpecs
+                .Select(static specPath => new OpenApiSourceDefinition(InferSourceName(specPath), specPath))
+                .ToArray();
+        }
+
+        throw new FileNotFoundException(
+            "Could not resolve any OpenAPI contract files. " +
+            "Configure OpenApi:Sources or keep one or more OpenAPI files in a contracts directory.");
+    }
+
+    /// <summary>
     /// Parses an OpenAPI file and builds executable tool descriptors.
     /// </summary>
     public static IReadOnlyList<ToolDescriptor> BuildTools(string specPath, string? baseUrlOverride = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(specPath);
+        string sourceName = InferSourceName(specPath);
 
-        using FileStream stream = File.OpenRead(specPath);
-        OpenApiDocument document = new OpenApiStreamReader().Read(stream, out OpenApiDiagnostic diagnostic);
+        return BuildToolsAsync([new OpenApiSourceDefinition(sourceName, specPath, baseUrlOverride)])
+            .GetAwaiter()
+            .GetResult();
+    }
 
-        if (diagnostic.Errors.Count > 0)
+    /// <summary>
+    /// Parses multiple OpenAPI files or URLs and builds executable tool descriptors.
+    /// </summary>
+    public static async Task<IReadOnlyList<ToolDescriptor>> BuildToolsAsync(
+        IReadOnlyList<OpenApiSourceDefinition> sources,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+
+        if (sources.Count == 0)
         {
-            string errors = string.Join("; ", diagnostic.Errors.Select(error => error.Message));
-            throw new InvalidOperationException($"OpenAPI parse failed: {errors}");
+            return [];
         }
+
+        LoadedOpenApiSource[] loadedSources = await Task.WhenAll(sources.Select(source => LoadSourceAsync(source, ct)));
 
         List<ToolDescriptor> tools = [];
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        Uri? overrideBaseUri = ResolveOverrideBaseUri(baseUrlOverride);
 
-        foreach ((string routeTemplate, OpenApiPathItem pathItem) in document.Paths)
+        foreach (LoadedOpenApiSource loadedSource in loadedSources)
         {
-            foreach ((OperationType operationType, OpenApiOperation operation) in pathItem.Operations)
+            Uri? overrideBaseUri = ResolveOverrideBaseUri(loadedSource.Source.BaseUrlOverride);
+
+            foreach ((string routeTemplate, OpenApiPathItem pathItem) in loadedSource.Document.Paths)
             {
-                EndpointDefinition endpoint = BuildEndpointDefinition(document, routeTemplate, pathItem, operationType, operation, overrideBaseUri);
-
-                ToolDescriptor descriptor = BuildToolDescriptor(endpoint, endpoint.ToolName, isAlias: false);
-                if (names.Add(descriptor.Name))
+                foreach ((OperationType operationType, OpenApiOperation operation) in pathItem.Operations)
                 {
-                    tools.Add(descriptor);
-                }
+                    EndpointDefinition endpoint = BuildEndpointDefinition(
+                        loadedSource.Document,
+                        routeTemplate,
+                        pathItem,
+                        operationType,
+                        operation,
+                        overrideBaseUri,
+                        loadedSource.DocumentUri);
 
-                foreach (string alias in endpoint.Aliases)
-                {
-                    if (!names.Add(alias))
+                    string primaryToolName = ReserveUniqueToolName(names, endpoint.ToolName, loadedSource.Source.Name);
+                    tools.Add(BuildToolDescriptor(endpoint, primaryToolName, isAlias: false));
+
+                    foreach (string alias in endpoint.Aliases)
                     {
-                        continue;
+                        string uniqueAlias = ReserveUniqueToolName(names, alias, loadedSource.Source.Name);
+                        tools.Add(BuildToolDescriptor(endpoint, uniqueAlias, isAlias: true));
                     }
-
-                    tools.Add(BuildToolDescriptor(endpoint, alias, isAlias: true));
                 }
             }
         }
@@ -146,7 +176,8 @@ public static class OpenApiToolCatalogBuilder
         OpenApiPathItem pathItem,
         OperationType operationType,
         OpenApiOperation operation,
-        Uri? overrideBaseUri)
+        Uri? overrideBaseUri,
+        Uri? documentUri)
     {
         string operationId = operation.OperationId ?? $"{operationType}_{routeTemplate}";
         string toolName = ResolvePrimaryToolName(operationId, operationType, routeTemplate);
@@ -166,7 +197,7 @@ public static class OpenApiToolCatalogBuilder
 
         RequestBodyDefinition requestBody = BuildRequestBody(operation.RequestBody);
 
-        Uri? endpointBaseUri = ResolveEndpointBaseUri(operation.Servers, pathItem.Servers, document.Servers, overrideBaseUri);
+        Uri? endpointBaseUri = ResolveEndpointBaseUri(operation.Servers, pathItem.Servers, document.Servers, overrideBaseUri, documentUri);
 
         IReadOnlyList<string> tags = operation.Tags.Count > 0
             ? operation.Tags.Select(tag => tag.Name).ToArray()
@@ -291,9 +322,14 @@ public static class OpenApiToolCatalogBuilder
         }
 
         using HttpResponseMessage response = await client.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
 
         string body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new { status = (int)response.StatusCode, error = response.ReasonPhrase, body };
+        }
+
         if (string.IsNullOrWhiteSpace(body))
         {
             return null;
@@ -495,7 +531,8 @@ public static class OpenApiToolCatalogBuilder
         IList<OpenApiServer> operationServers,
         IList<OpenApiServer> pathServers,
         IList<OpenApiServer> rootServers,
-        Uri? overrideBaseUri)
+        Uri? overrideBaseUri,
+        Uri? documentUri)
     {
         if (overrideBaseUri is not null)
         {
@@ -514,12 +551,18 @@ public static class OpenApiToolCatalogBuilder
             expanded = expanded.Replace($"{{{variableName}}}", variable.Default, StringComparison.Ordinal);
         }
 
-        if (!Uri.TryCreate(expanded, UriKind.Absolute, out Uri? uri))
+        if (Uri.TryCreate(expanded, UriKind.Absolute, out Uri? uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            return EnsureTrailingSlash(uri);
+        }
+
+        if (documentUri is null || !Uri.TryCreate(documentUri, expanded, out Uri? resolvedUri))
         {
             return null;
         }
 
-        return EnsureTrailingSlash(uri);
+        return EnsureTrailingSlash(resolvedUri);
     }
 
     /// <summary>
@@ -641,6 +684,203 @@ public static class OpenApiToolCatalogBuilder
     }
 
     /// <summary>
+    /// Resolves configured OpenAPI sources from the OpenApi:Sources collection.
+    /// </summary>
+    private static List<OpenApiSourceDefinition> ResolveConfiguredSources(IConfiguration configuration, string baseDirectory)
+    {
+        List<OpenApiSourceDefinition> sources = [];
+
+        foreach (IConfigurationSection section in configuration.GetSection("OpenApi:Sources").GetChildren())
+        {
+            string? configuredPath = section["Path"];
+            string? configuredUrl = section["Url"];
+
+            bool hasPath = !string.IsNullOrWhiteSpace(configuredPath);
+            bool hasUrl = !string.IsNullOrWhiteSpace(configuredUrl);
+
+            if (hasPath == hasUrl)
+            {
+                throw new InvalidOperationException(
+                    "Each OpenApi:Sources entry must define exactly one of Path or Url.");
+            }
+
+            string location = hasPath
+                ? ResolveConfiguredLocalPath(configuredPath!, baseDirectory)
+                : configuredUrl!;
+
+            string name = string.IsNullOrWhiteSpace(section["Name"])
+                ? InferSourceName(location)
+                : section["Name"]!;
+
+            sources.Add(new OpenApiSourceDefinition(name, location, section["BaseUrl"]));
+        }
+
+        return sources;
+    }
+
+    /// <summary>
+    /// Discovers candidate OpenAPI contract files relative to the application base directory.
+    /// </summary>
+    private static IReadOnlyList<string> DiscoverSpecPaths(string baseDirectory)
+    {
+        var discoveredSpecs = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        string[] candidates =
+        [
+            Path.Combine(baseDirectory, "contracts", "openapi.yaml"),
+            Path.Combine(baseDirectory, "contracts", "openapi.yml"),
+            Path.Combine(baseDirectory, "contracts", "openapi.json"),
+            Path.Combine(baseDirectory, "openapi.yaml"),
+            Path.Combine(baseDirectory, "openapi.yml"),
+            Path.Combine(baseDirectory, "openapi.json"),
+        ];
+
+        foreach (string candidate in candidates)
+        {
+            AddDiscoveredSpec(discoveredSpecs, seen, candidate);
+        }
+
+        string[] contractDirectories =
+        [
+            Path.Combine(baseDirectory, "contracts"),
+            Path.GetFullPath(Path.Combine(baseDirectory, "../../../../contracts")),
+        ];
+
+        string[] patterns = ["*.openapi.yaml", "*.openapi.yml", "*.openapi.json", "openapi.yaml", "openapi.yml", "openapi.json"];
+
+        foreach (string directory in contractDirectories.Where(Directory.Exists))
+        {
+            foreach (string pattern in patterns)
+            {
+                foreach (string file in Directory.GetFiles(directory, pattern, SearchOption.TopDirectoryOnly))
+                {
+                    AddDiscoveredSpec(discoveredSpecs, seen, file);
+                }
+            }
+        }
+
+        return discoveredSpecs;
+    }
+
+    /// <summary>
+    /// Loads and parses one OpenAPI source from disk or over HTTP.
+    /// </summary>
+    private static async Task<LoadedOpenApiSource> LoadSourceAsync(OpenApiSourceDefinition source, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source.Location);
+
+        Stream stream;
+        Uri? documentUri = null;
+
+        if (Uri.TryCreate(source.Location, UriKind.Absolute, out Uri? absoluteUri)
+            && (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps))
+        {
+            stream = await SpecHttpClient.GetStreamAsync(absoluteUri, ct);
+            documentUri = absoluteUri;
+        }
+        else
+        {
+            string fullPath = Path.GetFullPath(source.Location);
+            if (!File.Exists(fullPath))
+            {
+                throw new FileNotFoundException($"Configured OpenAPI spec was not found: '{fullPath}'.");
+            }
+
+            stream = File.OpenRead(fullPath);
+        }
+
+        await using (stream.ConfigureAwait(false))
+        {
+            OpenApiDocument document = new OpenApiStreamReader().Read(stream, out OpenApiDiagnostic diagnostic);
+
+            if (diagnostic.Errors.Count > 0)
+            {
+                string errors = string.Join("; ", diagnostic.Errors.Select(error => error.Message));
+                throw new InvalidOperationException($"OpenAPI parse failed for '{source.Name}': {errors}");
+            }
+
+            return new LoadedOpenApiSource(source, document, documentUri);
+        }
+    }
+
+    /// <summary>
+    /// Reserves a globally unique tool name across all loaded OpenAPI sources.
+    /// </summary>
+    private static string ReserveUniqueToolName(HashSet<string> names, string proposedName, string sourceName)
+    {
+        string normalizedName = NormalizeIdentifier(proposedName);
+        if (names.Add(normalizedName))
+        {
+            return normalizedName;
+        }
+
+        string prefixedName = NormalizeIdentifier($"{sourceName}_{normalizedName}");
+        if (names.Add(prefixedName))
+        {
+            return prefixedName;
+        }
+
+        int suffix = 2;
+        while (true)
+        {
+            string candidate = $"{prefixedName}_{suffix}";
+            if (names.Add(candidate))
+            {
+                return candidate;
+            }
+
+            suffix++;
+        }
+    }
+
+    /// <summary>
+    /// Adds one discovered spec path while preserving discovery order and uniqueness.
+    /// </summary>
+    private static void AddDiscoveredSpec(List<string> discoveredSpecs, HashSet<string> seen, string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath) || !seen.Add(fullPath))
+        {
+            return;
+        }
+
+        discoveredSpecs.Add(fullPath);
+    }
+
+    /// <summary>
+    /// Resolves one configured local spec path relative to the application base directory.
+    /// </summary>
+    private static string ResolveConfiguredLocalPath(string configuredPath, string baseDirectory)
+    {
+        string explicitPath = Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.GetFullPath(Path.Combine(baseDirectory, configuredPath));
+
+        return explicitPath;
+    }
+
+    /// <summary>
+    /// Infers a stable source name from a local file path or remote URL.
+    /// </summary>
+    private static string InferSourceName(string location)
+    {
+        if (Uri.TryCreate(location, UriKind.Absolute, out Uri? uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            string lastSegment = uri.Segments.LastOrDefault()?.Trim('/') ?? string.Empty;
+            string candidate = string.IsNullOrWhiteSpace(lastSegment)
+                ? uri.Host
+                : lastSegment;
+
+            return NormalizeIdentifier(candidate);
+        }
+
+        return NormalizeIdentifier(Path.GetFileNameWithoutExtension(location));
+    }
+
+    /// <summary>
     /// Normalized endpoint definition derived from OpenAPI operation data.
     /// </summary>
     private sealed record EndpointDefinition(
@@ -670,4 +910,12 @@ public static class OpenApiToolCatalogBuilder
     private sealed record RequestBodyDefinition(
         bool SupportsJson,
         bool Required);
+
+    /// <summary>
+    /// Parsed OpenAPI source together with its originating document URI, if any.
+    /// </summary>
+    private sealed record LoadedOpenApiSource(
+        OpenApiSourceDefinition Source,
+        OpenApiDocument Document,
+        Uri? DocumentUri);
 }

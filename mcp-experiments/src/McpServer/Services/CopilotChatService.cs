@@ -1,8 +1,11 @@
 using GitHub.Copilot.SDK;
 using System.Diagnostics;
 
-namespace TestWeb.Services;
+namespace McpServer.Services;
 
+/// <summary>
+/// Hosts a long-lived Copilot SDK session inside the MCP server and exposes chat turns.
+/// </summary>
 public sealed class CopilotChatService : IAsyncDisposable
 {
     private const string PromptModeSystem = """
@@ -56,7 +59,8 @@ Output rules:
     private readonly string model;
     private readonly string mcpEndpoint;
     private readonly string mcpServerName;
-    private static readonly ActivitySource ActivitySource = new("TestWeb.CopilotChatService");
+    private readonly TimeSpan sendTimeout;
+    private static readonly ActivitySource ActivitySource = new("McpServer.CopilotChatService");
 
     private CopilotClient? client;
     private CopilotSession? session;
@@ -67,6 +71,14 @@ Output rules:
         model = configuration["Copilot:Model"] ?? "gpt-5";
         mcpEndpoint = configuration["Mcp:Endpoint"] ?? "http://localhost:5100/mcp";
         mcpServerName = configuration["Copilot:McpServerName"] ?? "mcp-experiments";
+
+        int configuredTimeoutSeconds = configuration.GetValue<int?>("Copilot:SendTimeoutSeconds") ?? 180;
+        if (configuredTimeoutSeconds <= 0)
+        {
+            configuredTimeoutSeconds = 180;
+        }
+
+        sendTimeout = TimeSpan.FromSeconds(configuredTimeoutSeconds);
     }
 
     public async Task<ChatTurnMetrics> SendPromptAsync(string prompt, CancellationToken cancellationToken = default)
@@ -88,7 +100,7 @@ Output rules:
         var response = await session!.SendAndWaitAsync(new MessageOptions
         {
             Prompt = prompt,
-        }, TimeSpan.FromSeconds(90));
+        }, sendTimeout, cancellationToken);
 
         stopwatch.Stop();
 
@@ -231,14 +243,13 @@ Output rules:
         gate.Dispose();
     }
 
-    private int CountTokens(string text)
+    private static int CountTokens(string text)
     {
         if (string.IsNullOrEmpty(text))
         {
             return 0;
         }
 
-        // Use a fast local estimate to avoid blocking page render on tokenizer initialization.
         return Math.Max(1, (int)Math.Ceiling(text.Length / 4d));
     }
 
@@ -249,3 +260,8 @@ Output rules:
         int TotalTokens,
         long ElapsedMilliseconds);
 }
+
+/// <summary>
+/// Request payload for chat send endpoint.
+/// </summary>
+public sealed record ChatPromptRequest(string Prompt);
