@@ -135,7 +135,29 @@ public static class OpenApiToolCatalogBuilder
             return [];
         }
 
-        OpenApiSourceDocument[] loadedSources = await Task.WhenAll(sources.Select(source => documentLoader.LoadAsync(source, ct)));
+        // Load sources with per-source error handling to gracefully fall back if one fails.
+        List<OpenApiSourceDocument> loadedSources = [];
+        foreach (var source in sources)
+        {
+            try
+            {
+                var loadedSource = await documentLoader.LoadAsync(source, ct);
+                loadedSources.Add(loadedSource);
+            }
+            catch (Exception ex)
+            {
+                // If a remote or local source fails to load, log and skip it (don't crash the app).
+                // This allows brewery to load even if petstore times out.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[OpenAPI] Failed to load '{source.Name}' from '{source.Location}': {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        if (loadedSources.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No OpenAPI sources loaded. Configured sources: {string.Join(", ", sources.Select(s => $"'{s.Name}' ({s.Location})"))}");
+        }
 
         List<ToolDescriptor> tools = [];
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

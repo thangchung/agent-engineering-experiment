@@ -8,7 +8,10 @@ namespace McpServer.OpenApi;
 /// </summary>
 internal sealed class OpenApiDocumentLoader : IOpenApiDocumentLoader
 {
-    private static readonly HttpClient SpecHttpClient = new();
+    private static readonly HttpClient SpecHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(10),  // 10-second timeout for remote specs
+    };
 
     /// <inheritdoc/>
     public async Task<OpenApiSourceDocument> LoadAsync(OpenApiToolCatalogBuilder.OpenApiSourceDefinition source, CancellationToken ct)

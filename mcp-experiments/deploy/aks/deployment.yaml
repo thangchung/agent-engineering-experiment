@@ -99,7 +99,7 @@ spec:
             - name: DataProtection__KeysPath
               value: /var/app/data-protection-keys
             - name: Mcp__Endpoint
-              value: http://mcp-server/mcp
+              value: http://mcp-server:8081/mcp
             - name: OTEL_SERVICE_NAME
               value: testweb
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

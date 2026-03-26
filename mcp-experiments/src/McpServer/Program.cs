@@ -1,15 +1,22 @@
+using System.Reflection;
+using System.Text.Json;
 using McpServer;
+using McpServer.Bootstrap;
 using McpServer.CodeMode;
 using McpServer.OpenApi;
 using McpServer.Registry;
 using McpServer.Search;
 using McpServer.Services;
 using McpServer.Tools;
+using ModelContextProtocol.Server;
 
 // Streamable-HTTP MCP server. Connect via MCP Inspector or any HTTP-based MCP client:
 //   Transport: Streamable HTTP
 //   URL:       http://localhost:5100/mcp
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+// MCP clients sometimes probe non-exposed tool names; suppress noisy internal error logs for those expected probes.
+builder.Logging.AddFilter("ModelContextProtocol.Server.McpServer", LogLevel.Critical);
 
 builder.AddServiceDefaults();
 
@@ -38,6 +45,8 @@ List<ToolDescriptor> tools =
 
 tools.AddRange(await OpenApiToolCatalogBuilder.BuildToolsAsync(openApiSources));
 
+BootstrapConsoleReporter.WriteReport(openApiSources, tools);
+
 builder.Services.AddSingleton<IToolRegistry>(new ToolRegistry(tools));
 builder.Services.AddSingleton<IToolSearcher, WeightedToolSearcher>();
 builder.Services.AddSingleton<MetaTools>();
@@ -59,6 +68,53 @@ builder.Services
     .WithToolsFromAssembly();
 
 WebApplication app = builder.Build();
+
+HashSet<string> exposedMcpToolNames = typeof(McpToolHandlers)
+    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+    .Where(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null)
+    .Select(method => method.Name)
+    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsPost(context.Request.Method) &&
+        context.Request.Path.Equals("/mcp", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Request.EnableBuffering();
+        try
+        {
+            using JsonDocument document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+            if (document.RootElement.TryGetProperty("method", out JsonElement methodElement) &&
+                string.Equals(methodElement.GetString(), "tools/call", StringComparison.Ordinal) &&
+                document.RootElement.TryGetProperty("params", out JsonElement paramsElement) &&
+                paramsElement.ValueKind == JsonValueKind.Object &&
+                paramsElement.TryGetProperty("name", out JsonElement nameElement) &&
+                nameElement.ValueKind == JsonValueKind.String)
+            {
+                string? toolName = nameElement.GetString();
+                if (!string.IsNullOrWhiteSpace(toolName) && !exposedMcpToolNames.Contains(toolName))
+                {
+                    app.Logger.LogInformation(
+                        "MCP unknown tool probe: {ToolName}. This is expected for non-exposed tools in tool-search mode.",
+                        toolName);
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Non-JSON frames are ignored here; MCP endpoint handles protocol parsing.
+        }
+        finally
+        {
+            if (context.Request.Body.CanSeek)
+            {
+                context.Request.Body.Position = 0;
+            }
+        }
+    }
+
+    await next();
+});
 
 app.MapDefaultEndpoints();
 

@@ -1,4 +1,5 @@
 using GitHub.Copilot.SDK;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace McpServer.Services;
@@ -79,18 +80,19 @@ User refers to a tool or endpoint that cannot be found.
     private readonly string mcpEndpoint;
     private readonly string mcpServerName;
     private readonly TimeSpan sendTimeout;
+    private readonly ILogger<CopilotChatService> logger;
     private static readonly ActivitySource ActivitySource = new("McpServer.CopilotChatService");
 
     private CopilotClient? client;
     private CopilotSession? session;
-    private string? sessionTraceParent;
 
-    public CopilotChatService(IConfiguration configuration)
+    public CopilotChatService(IConfiguration configuration, ILogger<CopilotChatService> logger)
     {
         model = configuration["Copilot:Model"] ?? "gpt-5";
         gitHubToken = configuration["Copilot:GitHubToken"];
         mcpEndpoint = configuration["Mcp:Endpoint"] ?? "http://localhost:5100/mcp";
         mcpServerName = configuration["Copilot:McpServerName"] ?? "mcp-experiments";
+        this.logger = logger;
 
         int configuredTimeoutSeconds = configuration.GetValue<int?>("Copilot:SendTimeoutSeconds") ?? 180;
         if (configuredTimeoutSeconds <= 0)
@@ -109,30 +111,100 @@ User refers to a tool or endpoint that cannot be found.
         }
 
         using Activity? activity = ActivitySource.StartActivity("copilot.chat.turn", ActivityKind.Client);
-        string? traceParent = activity?.Id;
-        string? traceState = activity?.TraceStateString;
+        await EnsureSessionAsync(cancellationToken);
 
-        await EnsureSessionAsync(traceParent, traceState, cancellationToken);
-
-        int promptTokens = CountTokens(prompt);
+        int promptTokensPerAttempt = CountTokens(prompt);
+        int totalPromptTokens = 0;
+        int totalCompletionTokens = 0;
+        int attemptCount = 0;
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        var response = await session!.SendAndWaitAsync(new MessageOptions
+        try
         {
-            Prompt = prompt,
-        }, sendTimeout, cancellationToken);
+            attemptCount++;
+            totalPromptTokens += promptTokensPerAttempt;
 
-        stopwatch.Stop();
+            var response = await session!.SendAndWaitAsync(new MessageOptions
+            {
+                Prompt = prompt,
+            }, sendTimeout, cancellationToken);
 
-        string content = response?.Data?.Content ?? "(no response)";
-        int completionTokens = CountTokens(content);
+            string content = response?.Data?.Content ?? "(no response)";
+            int completionTokens = CountTokens(content);
+            totalCompletionTokens += completionTokens;
 
-        return new ChatTurnMetrics(
-            content,
-            promptTokens,
-            completionTokens,
-            promptTokens + completionTokens,
-            stopwatch.ElapsedMilliseconds);
+            stopwatch.Stop();
+
+            if (attemptCount > 1)
+            {
+                logger.LogWarning("Chat turn succeeded after {AttemptCount} attempts. Total tokens: prompt={TotalPromptTokens}, completion={TotalCompletionTokens}, total={TotalTokens}",
+                    attemptCount, totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens);
+            }
+
+            return new ChatTurnMetrics(
+                content,
+                totalPromptTokens,
+                totalCompletionTokens,
+                totalPromptTokens + totalCompletionTokens,
+                stopwatch.ElapsedMilliseconds);
+        }
+        catch (Exception ex) when (IsSessionNotFoundException(ex))
+        {
+            // Session became stale; clear and retry with fresh session
+            logger.LogInformation("Session stale after {AttemptCount} attempt(s), tokens so far: prompt={PromptTokens}, completion={CompletionTokens}",
+                attemptCount, totalPromptTokens, totalCompletionTokens);
+
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                if (session is not null)
+                {
+                    await session.DisposeAsync();
+                    session = null;
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            // Retry with fresh session
+            await EnsureSessionAsync(cancellationToken);
+
+            attemptCount++;
+            totalPromptTokens += promptTokensPerAttempt;
+
+            try
+            {
+                var retryResponse = await session!.SendAndWaitAsync(new MessageOptions
+                {
+                    Prompt = prompt,
+                }, sendTimeout, cancellationToken);
+
+                string retryContent = retryResponse?.Data?.Content ?? "(no response)";
+                int retryCompletionTokens = CountTokens(retryContent);
+                totalCompletionTokens += retryCompletionTokens;
+
+                stopwatch.Stop();
+
+                logger.LogWarning("Chat turn recovered. Total attempts: {AttemptCount}, total tokens: prompt={TotalPromptTokens}, completion={TotalCompletionTokens}, total={TotalTokens}",
+                    attemptCount, totalPromptTokens, totalCompletionTokens, totalPromptTokens + totalCompletionTokens);
+
+                return new ChatTurnMetrics(
+                    retryContent,
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    totalPromptTokens + totalCompletionTokens,
+                    stopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception retryEx) when (IsSessionNotFoundException(retryEx))
+            {
+                stopwatch.Stop();
+                throw new InvalidOperationException(
+                    "Copilot session became stale and could not be recovered after retry. Please reset session and try again.",
+                    retryEx);
+            }
+        }
     }
 
     public async Task ResetAsync(CancellationToken cancellationToken = default)
@@ -153,7 +225,6 @@ User refers to a tool or endpoint that cannot be found.
                 client = null;
             }
 
-            sessionTraceParent = null;
         }
         finally
         {
@@ -161,9 +232,9 @@ User refers to a tool or endpoint that cannot be found.
         }
     }
 
-    private async Task EnsureSessionAsync(string? traceParent, string? traceState, CancellationToken cancellationToken)
+    private async Task EnsureSessionAsync(CancellationToken cancellationToken)
     {
-        if (session is not null && string.Equals(sessionTraceParent, traceParent, StringComparison.Ordinal))
+        if (session is not null)
         {
             return;
         }
@@ -171,7 +242,7 @@ User refers to a tool or endpoint that cannot be found.
         await gate.WaitAsync(cancellationToken);
         try
         {
-            if (session is not null && string.Equals(sessionTraceParent, traceParent, StringComparison.Ordinal))
+            if (session is not null)
             {
                 return;
             }
@@ -180,34 +251,36 @@ User refers to a tool or endpoint that cannot be found.
             {
                 await session.DisposeAsync();
                 session = null;
-                sessionTraceParent = null;
             }
 
-            CopilotClientOptions options = new()
+            if (client is null)
             {
-                GitHubToken = gitHubToken,
-                UseLoggedInUser = string.IsNullOrWhiteSpace(gitHubToken),
-            };
+                CopilotClientOptions options = new()
+                {
+                    GitHubToken = gitHubToken,
+                    UseLoggedInUser = string.IsNullOrWhiteSpace(gitHubToken),
+                };
 
-            client = new CopilotClient(options);
-            await client.StartAsync(cancellationToken);
+                client = new CopilotClient(options);
+                await client.StartAsync(cancellationToken);
 
-            ValidateConfiguredToken(gitHubToken);
+                ValidateConfiguredToken(gitHubToken);
 
-            GetAuthStatusResponse authStatus = await client.GetAuthStatusAsync(cancellationToken);
-            if (!authStatus.IsAuthenticated)
-            {
-                throw new InvalidOperationException(
-                    "Copilot CLI is not authenticated. Configure a supported token (gho_, ghu_, or github_pat_) or enable logged-in user authentication.");
-            }
+                GetAuthStatusResponse authStatus = await client.GetAuthStatusAsync(cancellationToken);
+                if (!authStatus.IsAuthenticated)
+                {
+                    throw new InvalidOperationException(
+                        "Copilot CLI is not authenticated. Configure a supported token (gho_, ghu_, or github_pat_) or enable logged-in user authentication.");
+                }
 
-            try
-            {
-                await client.ListModelsAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException(BuildModelDiscoveryErrorMessage(ex), ex);
+                try
+                {
+                    await client.ListModelsAsync(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(BuildModelDiscoveryErrorMessage(ex), ex);
+                }
             }
 
             SessionConfig config = new()
@@ -219,16 +292,25 @@ User refers to a tool or endpoint that cannot be found.
                     Mode = SystemMessageMode.Append,
                     Content = PromptModeSystem,
                 },
-                McpServers = BuildMcpServerConfig(traceParent, traceState),
+                McpServers = BuildMcpServerConfig(),
             };
 
             session = await client.CreateSessionAsync(config, cancellationToken);
-            sessionTraceParent = traceParent;
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    private static bool IsSessionNotFoundException(Exception ex)
+    {
+        if (ex.Message.Contains("Session not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return ex.InnerException is not null && IsSessionNotFoundException(ex.InnerException);
     }
 
     private static void ValidateConfiguredToken(string? token)
@@ -259,7 +341,7 @@ User refers to a tool or endpoint that cannot be found.
         return $"Failed to discover Copilot models for '{model}'. Verify that Copilot:GitHubToken is a supported token type and that the authenticated account has Copilot access. SDK error: {message}";
     }
 
-    private Dictionary<string, object> BuildMcpServerConfig(string? traceParent, string? traceState)
+    private Dictionary<string, object> BuildMcpServerConfig()
     {
         Dictionary<string, object> serverConfig = new()
         {
@@ -267,21 +349,6 @@ User refers to a tool or endpoint that cannot be found.
             ["url"] = mcpEndpoint,
             ["tools"] = new[] { "*" },
         };
-
-        if (!string.IsNullOrWhiteSpace(traceParent))
-        {
-            Dictionary<string, string> headers = new()
-            {
-                ["traceparent"] = traceParent,
-            };
-
-            if (!string.IsNullOrWhiteSpace(traceState))
-            {
-                headers["tracestate"] = traceState;
-            }
-
-            serverConfig["headers"] = headers;
-        }
 
         return new Dictionary<string, object>
         {

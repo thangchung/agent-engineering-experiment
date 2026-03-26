@@ -24,7 +24,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
-      - "5100:8081"
+      - "8081:8081"
     depends_on:
       - aspire-dashboard
     restart: unless-stopped
@@ -42,7 +42,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
-      - "5101:8080"
+      - "8080:8080"
     depends_on:
       - mcp-server
       - aspire-dashboard

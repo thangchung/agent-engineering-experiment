@@ -6,4 +6,5 @@ obj/
 
 # Local environment secrets — never commit
 .env
+**/*/secret.yaml
 data-protection-keys/

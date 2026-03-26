@@ -11,16 +11,16 @@
 <div class="chat-samples mb-3">
     <div class="fw-semibold mb-2">Sample prompts</div>
     <ul class="mb-0">
-        <li>what tools are available?</li>
-        <li>show only tools for brewery search by city</li>
-        <li>show concise parameter schema for brewery_search</li>
-        <li>show full json schema for brewery_get and brewery_list</li>
-        <li>get random brewery</li>
-        <li>find breweries in San Diego</li>
-        <li>how many brewery are there</li>
-        <li>find moon breweries and return top 5 as name and city only</li>
-        <li>call brewery_missing and explain the error briefly</li>
-        <li>give me a short summary and list only successful tool calls</li>
+        <li><strong>Discovery:</strong> what tools are available?</li>
+        <li><strong>Search:</strong> show me tools for brewery filtering by city</li>
+        <li><strong>Schema (Concise):</strong> show concise parameter schema for getSingleBrewery and listBreweries</li>
+        <li><strong>Schema (Full):</strong> show full json schema for brewery_random</li>
+        <li><strong>Single Call:</strong> get random brewery</li>
+        <li><strong>Multi-step:</strong> find breweries in San Diego and return only their names and types</li>
+        <li><strong>Aggregation:</strong> how many breweries are there across all pages</li>
+        <li><strong>Filtering:</strong> find breweries with 'moon' in the name, return top 5 as name and city</li>
+        <li><strong>Error Handling:</strong> try calling getSingleBrewery with an invalid ID and explain the error</li>
+        <li><strong>Summary:</strong> summarize all successful brewery queries and list the tools used with token counts</li>
     </ul>
 </div>
 
