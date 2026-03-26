@@ -1,3 +1,4 @@
+using System.Text.Json;
 using McpServer.CodeMode;
 using McpServer.Registry;
 using McpServer.Search;
@@ -6,6 +7,14 @@ namespace McpServer.UnitTests.CodeMode;
 
 public sealed class DiscoveryToolsTests
 {
+    [Fact]
+    public void SchemaDetailLevel_DeserializesFromLowercaseJsonString()
+    {
+        SchemaDetailLevel detail = JsonSerializer.Deserialize<SchemaDetailLevel>("\"detailed\"");
+
+        Assert.Equal(SchemaDetailLevel.Detailed, detail);
+    }
+
     [Fact]
     public void Search_RespectsLimit()
     {

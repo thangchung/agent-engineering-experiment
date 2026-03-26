@@ -22,13 +22,6 @@ List<OpenApiToolCatalogBuilder.OpenApiSourceDefinition> openApiSources =
     .. OpenApiToolCatalogBuilder.ResolveSources(builder.Configuration, AppContext.BaseDirectory),
 ];
 
-if (!openApiSources.Any(static source => string.Equals(source.Location, "https://petstore3.swagger.io/api/v3/openapi.json", StringComparison.OrdinalIgnoreCase)))
-{
-    openApiSources.Add(new OpenApiToolCatalogBuilder.OpenApiSourceDefinition(
-        Name: "petstore",
-        Location: "https://petstore3.swagger.io/api/v3/openapi.json"));
-}
-
 // Keep status pinned and load external API tools from OpenAPI instead of hard-coding.
 List<ToolDescriptor> tools =
 [
@@ -54,7 +47,6 @@ builder.Services.AddSingleton<DiscoveryTools>();
 builder.Services.AddSingleton<ISandboxRunner>(sp =>
     SandboxRunnerFactory.Create(builder.Configuration, sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<ExecuteTool>();
-builder.Services.AddSingleton<WorkflowCoordinator>();
 builder.Services.AddSingleton<CopilotChatService>();
 // Default anonymous context — replace with per-request auth resolution in production.
 builder.Services.AddSingleton(new UserContext());
@@ -71,7 +63,7 @@ WebApplication app = builder.Build();
 app.MapDefaultEndpoints();
 
 // Expose the root IServiceProvider so tool handlers can resolve services
-// (e.g. OpenBreweryDbClient). Handlers are registered before Build() so they cannot
+// needed by generated tool handlers. Handlers are registered before Build() so they cannot
 // receive the provider via constructor injection; this static accessor bridges that gap.
 ToolServiceProvider.Root = app.Services;
 
@@ -104,6 +96,13 @@ app.MapPost("/chat/send", async (ChatPromptRequest request, CopilotChatService c
             title: "Request canceled",
             detail: "The request was canceled before completion.",
             statusCode: StatusCodes.Status408RequestTimeout);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(
+            title: "Copilot session failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status502BadGateway);
     }
 });
 

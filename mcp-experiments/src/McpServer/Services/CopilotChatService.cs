@@ -9,54 +9,73 @@ namespace McpServer.Services;
 public sealed class CopilotChatService : IAsyncDisposable
 {
     private const string PromptModeSystem = """
-You are an MCP tool orchestration assistant for OpenBreweryDB.
+You are an MCP tool orchestration assistant. One or more OpenAPI specifications are loaded at startup and each HTTP operation is registered as an MCP tool. You do not know tool names in advance — always discover them via search before acting.
 
-Primary behavior:
-- Prefer MCP tool usage over freeform guessing.
-- Keep answers concise, factual, and directly tied to tool results.
-- If a tool call fails, explain briefly and suggest a valid next attempt.
+## Tool naming
+Tools are derived from OpenAPI operation IDs (e.g. `getPetById`, `listBreweries`, `addPet`). When unsure of the exact name, call `search` first.
 
-Interpret natural user intents and map them to these workflows:
-1) Tool discovery
-- For requests like "what tools are available", list all available tools with one-line descriptions.
+## Core rules
+- Always call `search` before invoking a tool you have not confirmed exists.
+- Never invent tool names, parameter names, or response fields.
+- Base all answers on actual tool results, not prior knowledge of the underlying API.
+- If a tool call fails, report the error briefly and suggest the closest valid alternative.
 
-2) Focused tool search
-- For requests like "find brewery search tools" or "tools for city search", return only matching tool names.
+## Workflow mapping
 
-3) Schema lookup (compact)
-- For requests asking for a concise parameter schema, use compact schema output for the requested tool.
+### 1 — Browse available tools
+User asks what tools exist or what the API can do.
+→ Call `search` with a broad query or list all tools with one-line summaries.
 
-4) Schema lookup (full)
-- For requests asking for full schema details, return full JSON schema for requested tools.
+### 2 — Focused search
+User mentions a domain, resource, or action keyword.
+→ Call `search` with that keyword and return the matching tool names and brief descriptions.
 
-5) Direct tool invocation
-- If user says "get random brewery" (or equivalent), call brewery_random and return only: name, city, state, country.
+### 3 — Schema lookup (compact)
+User asks for a quick or concise parameter list for a tool.
+→ Call `get_schema` with `detail = "Brief"` and return parameter names and types only.
 
-6) Multi-step tool chain
-- If user says "find breweries in San Diego", run a search/list step, pick one brewery id, then fetch full details.
-- Return: chosen id plus the final full details object.
+### 4 — Schema lookup (full)
+User asks for a full or detailed schema.
+→ Call `get_schema` with `detail = "Full"` and return the complete JSON schema.
 
-7) Code mode single-call
-- If user asks "how many brewery are there" (or total count), run code mode with brewery_meta and return only total count.
+### 5 — Single tool invocation
+User asks to call an endpoint or perform an action.
+→ Search to confirm the tool name, then invoke it with the supplied parameters.
+→ Return only the fields most relevant to the user's request.
 
-8) Code mode multi-call + transform
-- If user asks for transformed top results (for example "moon" query with top 5 name/city), run code mode and return only transformed array.
+### 6 — Multi-step chain
+User request requires calling one tool to obtain an ID or key, then calling another tool with that value.
+→ Execute each step in sequence; present intermediate results when they aid understanding.
+→ Return the final result.
 
-9) Error handling
-- If user asks for a non-existent tool, do not hallucinate.
-- Report the missing tool error briefly and suggest closest valid tool names.
+### 7 — Counts and metadata
+User asks for totals, counts, or pagination metadata.
+→ Call the appropriate tool and surface only the metadata fields requested.
 
-10) Safety/verbosity check
-- When user asks for a short summary and successful calls, provide a short summary and list only successful tool calls.
+### 8 — Code mode (pure Python compute)
+Use `execute` only when the task genuinely requires Python logic (e.g. sorting, filtering, math across many results) that cannot be done with a single tool call.
+Steps:
+  a. Call `get_execute_syntax` to confirm the runner capabilities.
+  b. Write pure Python; use the `requests`-compatible HTTP shim for any HTTP calls.
+  c. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside execute code.
+  d. Do not generate JavaScript or TypeScript for execute.
 
-Output rules:
-- Do not expose chain-of-thought.
-- Do not include unrelated commentary.
-- Prefer bullet lists for tool names and short key-value outputs for direct responses.
+### 9 — Missing or ambiguous tool
+User refers to a tool or endpoint that cannot be found.
+→ Do not hallucinate a tool name or parameters.
+→ Report that the tool was not found and suggest the closest matches from `search`.
+
+## Output rules
+- Never expose internal reasoning or chain-of-thought.
+- Use bullet lists for tool name enumerations.
+- Use compact key-value format (`field: value`) for single-record results.
+- Use short prose for multi-record summaries.
+- Omit fields the user did not ask for unless they are essential for context.
 """;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string model;
+    private readonly string? gitHubToken;
     private readonly string mcpEndpoint;
     private readonly string mcpServerName;
     private readonly TimeSpan sendTimeout;
@@ -69,6 +88,7 @@ Output rules:
     public CopilotChatService(IConfiguration configuration)
     {
         model = configuration["Copilot:Model"] ?? "gpt-5";
+        gitHubToken = configuration["Copilot:GitHubToken"];
         mcpEndpoint = configuration["Mcp:Endpoint"] ?? "http://localhost:5100/mcp";
         mcpServerName = configuration["Copilot:McpServerName"] ?? "mcp-experiments";
 
@@ -163,28 +183,32 @@ Output rules:
                 sessionTraceParent = null;
             }
 
-            CopilotClientOptions options = new();
-
-            string? configuredCliPath = Environment.GetEnvironmentVariable("COPILOT_CLI_PATH");
-            if (!string.IsNullOrWhiteSpace(configuredCliPath))
+            CopilotClientOptions options = new()
             {
-                options.CliPath = configuredCliPath;
-            }
-
-            string? configuredCliUrl = Environment.GetEnvironmentVariable("COPILOT_CLI_URL");
-            if (!string.IsNullOrWhiteSpace(configuredCliUrl))
-            {
-                options.CliUrl = configuredCliUrl;
-            }
-
-            string? configuredToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-            if (!string.IsNullOrWhiteSpace(configuredToken))
-            {
-                options.GitHubToken = configuredToken;
-            }
+                GitHubToken = gitHubToken,
+                UseLoggedInUser = string.IsNullOrWhiteSpace(gitHubToken),
+            };
 
             client = new CopilotClient(options);
             await client.StartAsync(cancellationToken);
+
+            ValidateConfiguredToken(gitHubToken);
+
+            GetAuthStatusResponse authStatus = await client.GetAuthStatusAsync(cancellationToken);
+            if (!authStatus.IsAuthenticated)
+            {
+                throw new InvalidOperationException(
+                    "Copilot CLI is not authenticated. Configure a supported token (gho_, ghu_, or github_pat_) or enable logged-in user authentication.");
+            }
+
+            try
+            {
+                await client.ListModelsAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(BuildModelDiscoveryErrorMessage(ex), ex);
+            }
 
             SessionConfig config = new()
             {
@@ -205,6 +229,34 @@ Output rules:
         {
             gate.Release();
         }
+    }
+
+    private static void ValidateConfiguredToken(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return;
+        }
+
+        if (token.StartsWith("ghp_", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Copilot:GitHubToken is a classic personal access token (ghp_), which the GitHub Copilot SDK does not support. Use a gho_, ghu_, or github_pat_ token instead.");
+        }
+    }
+
+    private string BuildModelDiscoveryErrorMessage(Exception ex)
+    {
+        string message = ex.Message;
+
+        if (gitHubToken?.StartsWith("github_pat_", StringComparison.OrdinalIgnoreCase) == true
+            && message.Contains("Copilot Requests", StringComparison.OrdinalIgnoreCase)
+            && message.Contains("unauthorized", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Failed to discover Copilot models for '{model}'. The configured fine-grained personal access token is missing the required 'Copilot Requests' permission. Update Copilot:GitHubToken to a github_pat_ token that grants 'Copilot Requests', or use a gho_ or ghu_ user token for an account with Copilot access. SDK error: {message}";
+        }
+
+        return $"Failed to discover Copilot models for '{model}'. Verify that Copilot:GitHubToken is a supported token type and that the authenticated account has Copilot access. SDK error: {message}";
     }
 
     private Dictionary<string, object> BuildMcpServerConfig(string? traceParent, string? traceState)

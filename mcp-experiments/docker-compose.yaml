@@ -1,0 +1,54 @@
+services:
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    container_name: aspire-dashboard
+    ports:
+      - "18888:18888"  # Dashboard UI  →  http://localhost:18888
+      - "4317:18889"   # OTLP/gRPC endpoint
+      - "4318:18890"   # OTLP/HTTP endpoint
+    environment:
+      # Allow anonymous access for local development.
+      # Remove this and set Dashboard__Frontend__BrowserToken for shared envs.
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    restart: unless-stopped
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: src/McpServer/Dockerfile
+    image: mcp-experiments/mcp-server:local
+    container_name: mcp-server
+    environment:
+      Copilot__GitHubToken: ${COPILOT_GITHUB_TOKEN}
+      OTEL_SERVICE_NAME: mcp-server
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "5100:8081"
+    depends_on:
+      - aspire-dashboard
+    restart: unless-stopped
+
+  testweb:
+    build:
+      context: .
+      dockerfile: src/TestWeb/Dockerfile
+    image: mcp-experiments/testweb:local
+    container_name: testweb
+    environment:
+      DataProtection__KeysPath: /var/app/data-protection-keys
+      Mcp__Endpoint: http://mcp-server:8081/mcp
+      OTEL_SERVICE_NAME: testweb
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "5101:8080"
+    depends_on:
+      - mcp-server
+      - aspire-dashboard
+    volumes:
+      - testweb-data-protection:/var/app/data-protection-keys
+    restart: unless-stopped
+
+volumes:
+  testweb-data-protection:

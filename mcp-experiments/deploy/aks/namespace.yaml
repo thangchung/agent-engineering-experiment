@@ -2,3 +2,6 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: mcp-experiments
+  labels:
+    app.kubernetes.io/part-of: mcp-experiments
+    app.kubernetes.io/name: mcp-platform

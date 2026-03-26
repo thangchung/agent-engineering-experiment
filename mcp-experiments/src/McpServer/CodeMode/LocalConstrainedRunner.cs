@@ -49,7 +49,8 @@ public sealed class LocalConstrainedRunner(TimeSpan timeout, int maxToolCalls, I
         {
             throw new InvalidOperationException(
                 "Code mode is isolated from tool-search tools. " +
-                "Do not call search_tools, call_tool, search, get_schema, or execute inside code mode; use pure Python compute only.");
+                "Do not call search_tools, call_tool, search, get_schema, or execute inside code mode; use pure Python compute only. " +
+                "If you need an MCP tool, call it outside execute. If you stay in execute, rewrite the task as direct Python logic or HTTP requests with the requests-compatible shim.");
         }
 
         using CancellationTokenSource timeoutCts = new(timeout);

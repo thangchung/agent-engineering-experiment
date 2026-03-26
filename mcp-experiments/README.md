@@ -80,7 +80,13 @@ docker build -t mcp-experiments:local .
 docker run --rm -it mcp-experiments:local
 ```
 
-3. Verify:
+3. Build all images:
+
+```bash
+docker compose down && docker compose up --build
+```
+
+4. Verify:
 - Container starts without crash.
 - Console output shows tool-list/search/schema/execute smoke values.
 

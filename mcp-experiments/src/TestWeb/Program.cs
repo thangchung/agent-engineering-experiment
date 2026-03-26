@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.DataProtection;
+using System.IO;
 using TestWeb.Components;
 using TestWeb.Services;
 
@@ -12,10 +14,16 @@ if (configuredApiTimeoutSeconds <= 0)
 }
 
 TimeSpan apiTimeout = TimeSpan.FromSeconds(configuredApiTimeoutSeconds);
+string dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys");
+bool useHttpsRedirection = builder.Configuration.GetValue<bool?>("HttpsRedirection:Enabled") ?? false;
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath))
+    .SetApplicationName("mcp-experiments-testweb");
 builder.Services.AddHttpClient<CopilotChatApiClient>(httpClient =>
 {
     httpClient.Timeout = apiTimeout;
@@ -34,7 +42,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+
+if (useHttpsRedirection)
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAntiforgery();
 

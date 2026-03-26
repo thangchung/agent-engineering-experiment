@@ -98,18 +98,6 @@ public sealed class ExecuteAndRunnerTests
         Assert.NotNull(response.FinalValue);
     }
 
-    [Fact]
-    public async Task WorkflowCoordinator_DelegatesToExecuteTool()
-    {
-        ISandboxRunner runner = new StubRunner(new RunnerResult("done", 0));
-        ExecuteTool executeTool = new(runner);
-        WorkflowCoordinator coordinator = new(executeTool);
-
-        object? result = await coordinator.RunAsync("result = 'done'", new UserContext(), CancellationToken.None);
-
-        Assert.Equal("done", result);
-    }
-
     private sealed class StubRunner(RunnerResult nextResult) : ISandboxRunner
     {
         public string SyntaxGuide => "stub";

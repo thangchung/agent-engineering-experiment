@@ -15,20 +15,6 @@ public sealed class MetaTools(IToolRegistry registry, IToolSearcher searcher)
         ["search_tools", "call_tool", "search", "get_schema", "execute"];
 
     /// <summary>
-    /// Lists synthetic and pinned tools only.
-    /// </summary>
-    public IReadOnlyList<ToolDefinition> ListTools(UserContext context)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-
-        return registry
-            .GetVisibleTools(context)
-            .Where(tool => tool.IsPinned || tool.IsSynthetic)
-            .Select(ToDefinition)
-            .ToArray();
-    }
-
-    /// <summary>
     /// Searches visible tools and returns compact schema-bearing definitions.
     /// </summary>
     public IReadOnlyList<ToolDefinition> SearchTools(string query, int limit, UserContext context)

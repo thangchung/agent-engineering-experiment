@@ -1,6 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: aspire-dashboard
+  namespace: mcp-experiments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aspire-dashboard
+  template:
+    metadata:
+      labels:
+        app: aspire-dashboard
+    spec:
+      containers:
+        - name: aspire-dashboard
+          image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS
+              value: "true"
+          ports:
+            - name: ui
+              containerPort: 18888
+            - name: otlp-grpc
+              containerPort: 18889
+            - name: otlp-http
+              containerPort: 18890
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: mcp-server
   namespace: mcp-experiments
 spec:
@@ -15,10 +52,22 @@ spec:
     spec:
       containers:
         - name: mcp-server
-          image: YOUR_REGISTRY/mcp-experiments:latest
+          image: mcp-experiments/mcp-server:local
           imagePullPolicy: IfNotPresent
+          env:
+            - name: Copilot__GitHubToken
+              valueFrom:
+                secretKeyRef:
+                  name: copilot-secret
+                  key: github-token
+            - name: OTEL_SERVICE_NAME
+              value: mcp-server
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://aspire-dashboard:18889
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
           resources:
             requests:
               cpu: "100m"
@@ -26,3 +75,50 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testweb
+  namespace: mcp-experiments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testweb
+  template:
+    metadata:
+      labels:
+        app: testweb
+    spec:
+      containers:
+        - name: testweb
+          image: mcp-experiments/testweb:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DataProtection__KeysPath
+              value: /var/app/data-protection-keys
+            - name: Mcp__Endpoint
+              value: http://mcp-server/mcp
+            - name: OTEL_SERVICE_NAME
+              value: testweb
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://aspire-dashboard:18889
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: testweb-data-protection
+              mountPath: /var/app/data-protection-keys
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: testweb-data-protection
+          persistentVolumeClaim:
+            claimName: testweb-data-protection

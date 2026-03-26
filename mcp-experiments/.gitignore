@@ -3,3 +3,7 @@ obj/
 **/bin/
 **/obj/
 .playwright-mcp/
+
+# Local environment secrets — never commit
+.env
+data-protection-keys/

@@ -48,12 +48,13 @@ public sealed class OpenApiToolCatalogBuilderTests
     }
 
     [Fact]
-    public void BuildTools_KeepsOpenBreweryCompatibilityAliases()
+    public async Task BuildTools_KeepsOpenBreweryCompatibilityAliases()
     {
         string root = GetRepositoryRoot();
         string specPath = Path.Combine(root, "contracts", "openbrewerydb.v1.openapi.yaml");
 
-        IReadOnlyList<McpServer.Registry.ToolDescriptor> tools = OpenApiToolCatalogBuilder.BuildTools(specPath);
+        IReadOnlyList<McpServer.Registry.ToolDescriptor> tools = await OpenApiToolCatalogBuilder.BuildToolsAsync(
+            [new OpenApiToolCatalogBuilder.OpenApiSourceDefinition("brewery", specPath)]);
         string[] names = tools.Select(tool => tool.Name).ToArray();
 
         Assert.Contains("brewery_get", names, StringComparer.OrdinalIgnoreCase);

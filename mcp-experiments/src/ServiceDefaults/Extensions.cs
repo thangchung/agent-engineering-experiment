@@ -63,6 +63,9 @@ public static class Extensions
             logging.IncludeScopes = true;
         });
 
+        // enable AI telemetry
+        AppContext.SetSwitch("OpenAI.Experimental.EnableOpenTelemetry", true);
+
         builder.Services.AddOpenTelemetry()
             .WithMetrics(metrics =>
             {

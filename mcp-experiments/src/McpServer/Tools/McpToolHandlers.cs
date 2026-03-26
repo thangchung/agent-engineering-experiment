@@ -40,6 +40,7 @@ public static class McpToolHandlers
 
         Activity.Current?.SetTag("mcp.handler.name", nameof(search_tools));
         Activity.Current?.SetTag("mcp.handler.results.count", results.Count);
+        Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", results.Select(static r => r.Name)));
 
         ILogger logger = loggerFactory.CreateLogger(typeof(McpToolHandlers));
         logger.LogInformation(
@@ -49,8 +50,6 @@ public static class McpToolHandlers
             query,
             limit,
             results.Select(static t => t.Name));
-
-            Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", results.Select(static r => r.Name)));
 
         return results;
     }
@@ -77,19 +76,21 @@ public static class McpToolHandlers
     /// </summary>
     [McpServerTool, Description("Discover tools by query with optional detail, tag filter, and limit. Use before get_schema and execute in a multi-step code-mode workflow.")]
     public static DiscoverySearchResponse search(
-        [Description("Search query for tool discovery")] string query,
         [FromServices] DiscoveryTools discoveryTools,
         [FromServices] UserContext context,
         [FromServices] ILoggerFactory loggerFactory,
-        [Description("Detail level: Brief (default), Detailed, or Full")] SchemaDetailLevel detail = SchemaDetailLevel.Brief,
+        [Description("Search query for tool discovery")] string query,
+        [Description("Detail level: Brief (default), Detailed, or Full. Also accepts 0, 1, or 2.")] JsonElement? detail = null,
         [Description("Optional tag filters. When omitted, all tags are included.")] IReadOnlyList<string>? tags = null,
         [Description("Optional maximum results. Defaults to server discovery default.")] int? limit = null)
     {
-        DiscoverySearchResponse response = discoveryTools.Search(query, context, detail, tags, limit);
+        SchemaDetailLevel resolvedDetail = detail.HasValue ? ParseSchemaDetailLevel(detail.Value, SchemaDetailLevel.Brief, nameof(detail)) : SchemaDetailLevel.Brief;
+        DiscoverySearchResponse response = discoveryTools.Search(query, context, resolvedDetail, tags, limit);
 
         Activity.Current?.SetTag("mcp.handler.name", nameof(search));
         Activity.Current?.SetTag("mcp.handler.results.count", response.Results.Count);
         Activity.Current?.SetTag("mcp.handler.results.totalMatched", response.TotalMatched);
+        Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", response.Results.Select(static r => r.Name)));
 
         ILogger logger = loggerFactory.CreateLogger(typeof(McpToolHandlers));
         logger.LogInformation(
@@ -100,22 +101,117 @@ public static class McpToolHandlers
             query,
             response.Results.Select(static r => r.Name));
 
-        Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", response.Results.Select(static r => r.Name)));
-
         return response;
     }
 
     /// <summary>
     /// Returns input schemas for a set of tool names with optional detail and missing-name reporting.
     /// </summary>
-    [McpServerTool, Description("Retrieve input schemas for tool names. Default detail is Detailed markdown, and missing tool names are reported.")]
+    [McpServerTool, Description("Retrieve input schemas for tool names. Accepts toolNames plus common aliases such as names, tools, toolName, or name. Default detail is Detailed markdown, and missing tool names are reported.")]
     public static SchemaLookupResponse get_schema(
-        [Description("List of tool names to retrieve schemas for")] IReadOnlyList<string> toolNames,
         [FromServices] DiscoveryTools discoveryTools,
         [FromServices] UserContext context,
-        [Description("Schema verbosity: Brief name-only, Detailed compact markdown, Full full JSON schema")] SchemaDetailLevel detail = SchemaDetailLevel.Detailed)
+        [Description("Preferred parameter: list of tool names to retrieve schemas for")] IReadOnlyList<string>? toolNames = null,
+        [Description("Alias for toolNames")] IReadOnlyList<string>? names = null,
+        [Description("Alias for toolNames")] IReadOnlyList<string>? tools = null,
+        [Description("Singular alias for one tool name")] string? toolName = null,
+        [Description("Singular alias for one tool name")] string? name = null,
+        [Description("Schema verbosity: Brief name-only, Detailed compact markdown, Full full JSON schema. Also accepts 0, 1, or 2.")] JsonElement? detail = null)
     {
-        return discoveryTools.GetSchema(toolNames, context, detail);
+        IReadOnlyList<string> requestedToolNames = ResolveSchemaToolNames(toolNames, names, tools, toolName, name);
+        SchemaDetailLevel resolvedDetail = detail.HasValue ? ParseSchemaDetailLevel(detail.Value, SchemaDetailLevel.Detailed, nameof(detail)) : SchemaDetailLevel.Detailed;
+        return discoveryTools.GetSchema(requestedToolNames, context, resolvedDetail);
+    }
+
+    private static SchemaDetailLevel ParseSchemaDetailLevel(JsonElement detail, SchemaDetailLevel defaultValue, string parameterName)
+    {
+        return detail.ValueKind switch
+        {
+            JsonValueKind.Undefined => defaultValue,
+            JsonValueKind.Null => defaultValue,
+            JsonValueKind.String => ParseSchemaDetailLevel(detail.GetString(), defaultValue, parameterName),
+            JsonValueKind.Number when detail.TryGetInt32(out int numericValue) => numericValue switch
+            {
+                0 => SchemaDetailLevel.Brief,
+                1 => SchemaDetailLevel.Detailed,
+                2 => SchemaDetailLevel.Full,
+                _ => defaultValue,
+            },
+            // For booleans, arrays, objects, or any other unrecognised type, fall back to
+            // the caller's default rather than throwing — the LLM intent is ambiguous.
+            _ => defaultValue,
+        };
+    }
+
+    private static SchemaDetailLevel ParseSchemaDetailLevel(string? detail, SchemaDetailLevel defaultValue, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            return defaultValue;
+        }
+
+        string normalized = detail.Trim();
+        if (Enum.TryParse<SchemaDetailLevel>(normalized, ignoreCase: true, out SchemaDetailLevel parsed))
+        {
+            return parsed;
+        }
+
+        return normalized switch
+        {
+            "0" => SchemaDetailLevel.Brief,
+            "1" => SchemaDetailLevel.Detailed,
+            "2" => SchemaDetailLevel.Full,
+            _ => defaultValue,
+        };
+    }
+
+    private static IReadOnlyList<string> ResolveSchemaToolNames(
+        IReadOnlyList<string>? toolNames,
+        IReadOnlyList<string>? names,
+        IReadOnlyList<string>? tools,
+        string? toolName,
+        string? name)
+    {
+        List<string> requested = [];
+        AppendNames(requested, toolNames);
+        AppendNames(requested, names);
+        AppendNames(requested, tools);
+        AppendName(requested, toolName);
+        AppendName(requested, name);
+
+        if (requested.Count == 0)
+        {
+            throw new ArgumentException(
+                "Provide at least one tool name using toolNames, names, tools, toolName, or name.",
+                "arguments");
+        }
+
+        return requested
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static void AppendNames(List<string> requested, IReadOnlyList<string>? values)
+    {
+        if (values is null)
+        {
+            return;
+        }
+
+        foreach (string value in values)
+        {
+            AppendName(requested, value);
+        }
+    }
+
+    private static void AppendName(List<string> requested, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        requested.Add(value.Trim());
     }
 
     /// <summary>

@@ -1,7 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using System.Web;
 using McpServer.Registry;
 using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
@@ -14,7 +13,8 @@ namespace McpServer.OpenApi;
 /// </summary>
 public static class OpenApiToolCatalogBuilder
 {
-    private static readonly HttpClient SpecHttpClient = new();
+    private static readonly IOpenApiDocumentLoader DefaultDocumentLoader = new OpenApiDocumentLoader();
+    private static readonly IOpenApiRequestInvoker DefaultRequestInvoker = new OpenApiRequestInvoker();
 
     /// <summary>
     /// Describes one OpenAPI source loaded from a local file path or remote URL.
@@ -107,15 +107,6 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Parses an OpenAPI file and builds executable tool descriptors.
     /// </summary>
-    public static IReadOnlyList<ToolDescriptor> BuildTools(string specPath, string? baseUrlOverride = null)
-    {
-        string sourceName = InferSourceName(specPath);
-
-        return BuildToolsAsync([new OpenApiSourceDefinition(sourceName, specPath, baseUrlOverride)])
-            .GetAwaiter()
-            .GetResult();
-    }
-
     /// <summary>
     /// Parses multiple OpenAPI files or URLs and builds executable tool descriptors.
     /// </summary>
@@ -123,19 +114,33 @@ public static class OpenApiToolCatalogBuilder
         IReadOnlyList<OpenApiSourceDefinition> sources,
         CancellationToken ct = default)
     {
+        return await BuildToolsAsync(sources, DefaultDocumentLoader, DefaultRequestInvoker, ct);
+    }
+
+    /// <summary>
+    /// Parses multiple OpenAPI files or URLs and builds executable tool descriptors.
+    /// </summary>
+    private static async Task<IReadOnlyList<ToolDescriptor>> BuildToolsAsync(
+        IReadOnlyList<OpenApiSourceDefinition> sources,
+        IOpenApiDocumentLoader documentLoader,
+        IOpenApiRequestInvoker requestInvoker,
+        CancellationToken ct = default)
+    {
         ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(documentLoader);
+        ArgumentNullException.ThrowIfNull(requestInvoker);
 
         if (sources.Count == 0)
         {
             return [];
         }
 
-        LoadedOpenApiSource[] loadedSources = await Task.WhenAll(sources.Select(source => LoadSourceAsync(source, ct)));
+        OpenApiSourceDocument[] loadedSources = await Task.WhenAll(sources.Select(source => documentLoader.LoadAsync(source, ct)));
 
         List<ToolDescriptor> tools = [];
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (LoadedOpenApiSource loadedSource in loadedSources)
+        foreach (OpenApiSourceDocument loadedSource in loadedSources)
         {
             Uri? overrideBaseUri = ResolveOverrideBaseUri(loadedSource.Source.BaseUrlOverride);
 
@@ -153,12 +158,12 @@ public static class OpenApiToolCatalogBuilder
                         loadedSource.DocumentUri);
 
                     string primaryToolName = ReserveUniqueToolName(names, endpoint.ToolName, loadedSource.Source.Name);
-                    tools.Add(BuildToolDescriptor(endpoint, primaryToolName, isAlias: false));
+                    tools.Add(BuildToolDescriptor(endpoint, primaryToolName, isAlias: false, requestInvoker));
 
                     foreach (string alias in endpoint.Aliases)
                     {
                         string uniqueAlias = ReserveUniqueToolName(names, alias, loadedSource.Source.Name);
-                        tools.Add(BuildToolDescriptor(endpoint, uniqueAlias, isAlias: true));
+                        tools.Add(BuildToolDescriptor(endpoint, uniqueAlias, isAlias: true, requestInvoker));
                     }
                 }
             }
@@ -220,7 +225,7 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Builds one executable tool descriptor from a normalized endpoint definition.
     /// </summary>
-    private static ToolDescriptor BuildToolDescriptor(EndpointDefinition endpoint, string toolName, bool isAlias)
+    private static ToolDescriptor BuildToolDescriptor(EndpointDefinition endpoint, string toolName, bool isAlias, IOpenApiRequestInvoker requestInvoker)
     {
         string schema = BuildInputSchema(endpoint.Parameters, endpoint.RequestBody);
         string description = isAlias
@@ -235,115 +240,7 @@ public static class OpenApiToolCatalogBuilder
             IsPinned: false,
             IsSynthetic: false,
             IsVisible: _ => true,
-            Handler: async (arguments, ct) => await InvokeEndpointAsync(endpoint, arguments, ct));
-    }
-
-    /// <summary>
-    /// Executes one OpenAPI-defined endpoint by mapping JSON arguments to path and query values.
-    /// </summary>
-    private static async Task<object?> InvokeEndpointAsync(EndpointDefinition endpoint, JsonElement arguments, CancellationToken ct)
-    {
-        HttpClient client = ToolServiceProvider.GetRequiredService<IHttpClientFactory>().CreateClient();
-
-        if (endpoint.BaseUri is null)
-        {
-            throw new InvalidOperationException(
-                $"Operation '{endpoint.ToolName}' requires a server URL. " +
-                "Define servers.url in the OpenAPI document or set OpenApi:BaseUrl.");
-        }
-
-        string path = endpoint.RouteTemplate;
-        var query = HttpUtility.ParseQueryString(string.Empty);
-        var cookieValues = new List<string>();
-        var headerValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (EndpointParameter parameter in endpoint.Parameters)
-        {
-            bool hasValue = arguments.TryGetProperty(parameter.Name, out JsonElement argumentValue);
-            if (!hasValue)
-            {
-                if (parameter.Required)
-                {
-                    throw new ArgumentException($"Missing required parameter '{parameter.Name}' for tool '{endpoint.ToolName}'.");
-                }
-
-                continue;
-            }
-
-            string stringValue = ToArgumentString(argumentValue);
-            if (parameter.Location == ParameterLocation.Path)
-            {
-                path = path.Replace($"{{{parameter.Name}}}", Uri.EscapeDataString(stringValue), StringComparison.Ordinal);
-                continue;
-            }
-
-            if (parameter.Location == ParameterLocation.Query)
-            {
-                query[parameter.Name] = stringValue;
-                continue;
-            }
-
-            if (parameter.Location == ParameterLocation.Header)
-            {
-                headerValues[parameter.Name] = stringValue;
-                continue;
-            }
-
-            if (parameter.Location == ParameterLocation.Cookie)
-            {
-                cookieValues.Add($"{parameter.Name}={Uri.EscapeDataString(stringValue)}");
-            }
-        }
-
-        if (endpoint.RequestBody.Required && !arguments.TryGetProperty("body", out _))
-        {
-            throw new ArgumentException($"Missing required request body 'body' for tool '{endpoint.ToolName}'.");
-        }
-
-        string requestPath = query.Count > 0 ? $"{path}?{query}" : path;
-
-        var requestUri = new Uri(endpoint.BaseUri, requestPath.TrimStart('/'));
-        using HttpRequestMessage request = new(ToHttpMethod(endpoint.Method), requestUri);
-
-        foreach ((string name, string value) in headerValues)
-        {
-            request.Headers.TryAddWithoutValidation(name, value);
-        }
-
-        if (cookieValues.Count > 0)
-        {
-            request.Headers.TryAddWithoutValidation("Cookie", string.Join("; ", cookieValues));
-        }
-
-        if (endpoint.RequestBody.SupportsJson && arguments.TryGetProperty("body", out JsonElement bodyElement))
-        {
-            string requestBodyJson = bodyElement.GetRawText();
-            request.Content = new StringContent(requestBodyJson, System.Text.Encoding.UTF8, "application/json");
-        }
-
-        using HttpResponseMessage response = await client.SendAsync(request, ct);
-
-        string body = await response.Content.ReadAsStringAsync(ct);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return new { status = (int)response.StatusCode, error = response.ReasonPhrase, body };
-        }
-
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            return null;
-        }
-
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(body);
-            return document.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return body;
-        }
+            Handler: async (arguments, ct) => await requestInvoker.InvokeAsync(endpoint, arguments, ct));
     }
 
     /// <summary>
@@ -405,20 +302,6 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Converts a JSON argument to wire format string for path/query placement.
     /// </summary>
-    private static string ToArgumentString(JsonElement value)
-    {
-        return value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString() ?? string.Empty,
-            JsonValueKind.Number => value.GetRawText(),
-            JsonValueKind.True => "true",
-            JsonValueKind.False => "false",
-            JsonValueKind.Null => string.Empty,
-            _ => value.GetRawText(),
-        };
-    }
-
-    /// <summary>
     /// Resolves a primary tool name using OpenAPI operationId or method/path fallback.
     /// </summary>
     private static string ResolvePrimaryToolName(string operationId, OperationType operationType, string routeTemplate)
@@ -667,21 +550,6 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Maps OpenAPI operation type to HTTP method.
     /// </summary>
-    private static HttpMethod ToHttpMethod(OperationType operationType)
-    {
-        return operationType switch
-        {
-            OperationType.Get => HttpMethod.Get,
-            OperationType.Post => HttpMethod.Post,
-            OperationType.Put => HttpMethod.Put,
-            OperationType.Delete => HttpMethod.Delete,
-            OperationType.Patch => HttpMethod.Patch,
-            OperationType.Head => HttpMethod.Head,
-            OperationType.Options => HttpMethod.Options,
-            OperationType.Trace => HttpMethod.Trace,
-            _ => throw new NotSupportedException($"Unsupported OpenAPI method: {operationType}"),
-        };
-    }
 
     /// <summary>
     /// Resolves configured OpenAPI sources from the OpenApi:Sources collection.
@@ -764,48 +632,6 @@ public static class OpenApiToolCatalogBuilder
     }
 
     /// <summary>
-    /// Loads and parses one OpenAPI source from disk or over HTTP.
-    /// </summary>
-    private static async Task<LoadedOpenApiSource> LoadSourceAsync(OpenApiSourceDefinition source, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentException.ThrowIfNullOrWhiteSpace(source.Location);
-
-        Stream stream;
-        Uri? documentUri = null;
-
-        if (Uri.TryCreate(source.Location, UriKind.Absolute, out Uri? absoluteUri)
-            && (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps))
-        {
-            stream = await SpecHttpClient.GetStreamAsync(absoluteUri, ct);
-            documentUri = absoluteUri;
-        }
-        else
-        {
-            string fullPath = Path.GetFullPath(source.Location);
-            if (!File.Exists(fullPath))
-            {
-                throw new FileNotFoundException($"Configured OpenAPI spec was not found: '{fullPath}'.");
-            }
-
-            stream = File.OpenRead(fullPath);
-        }
-
-        await using (stream.ConfigureAwait(false))
-        {
-            OpenApiDocument document = new OpenApiStreamReader().Read(stream, out OpenApiDiagnostic diagnostic);
-
-            if (diagnostic.Errors.Count > 0)
-            {
-                string errors = string.Join("; ", diagnostic.Errors.Select(error => error.Message));
-                throw new InvalidOperationException($"OpenAPI parse failed for '{source.Name}': {errors}");
-            }
-
-            return new LoadedOpenApiSource(source, document, documentUri);
-        }
-    }
-
-    /// <summary>
     /// Reserves a globally unique tool name across all loaded OpenAPI sources.
     /// </summary>
     private static string ReserveUniqueToolName(HashSet<string> names, string proposedName, string sourceName)
@@ -883,7 +709,7 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Normalized endpoint definition derived from OpenAPI operation data.
     /// </summary>
-    private sealed record EndpointDefinition(
+    internal sealed record EndpointDefinition(
         string ToolName,
         string Description,
         string RouteTemplate,
@@ -897,7 +723,7 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Canonical parameter projection for generated handlers.
     /// </summary>
-    private sealed record EndpointParameter(
+    internal sealed record EndpointParameter(
         string Name,
         ParameterLocation Location,
         bool Required,
@@ -907,15 +733,7 @@ public static class OpenApiToolCatalogBuilder
     /// <summary>
     /// Request body projection used for generated schema and invocation behavior.
     /// </summary>
-    private sealed record RequestBodyDefinition(
+    internal sealed record RequestBodyDefinition(
         bool SupportsJson,
         bool Required);
-
-    /// <summary>
-    /// Parsed OpenAPI source together with its originating document URI, if any.
-    /// </summary>
-    private sealed record LoadedOpenApiSource(
-        OpenApiSourceDefinition Source,
-        OpenApiDocument Document,
-        Uri? DocumentUri);
 }
