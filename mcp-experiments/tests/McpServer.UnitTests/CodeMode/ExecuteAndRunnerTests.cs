@@ -88,6 +88,74 @@ public sealed class ExecuteAndRunnerTests
     }
 
     [Fact]
+    public void LocalConstrainedRunner_SyntaxGuide_IncludesBaseUrlGuidance()
+    {
+        LocalConstrainedRunner runner = new(
+            TimeSpan.FromSeconds(5),
+            maxToolCalls: 10,
+            NullLogger<LocalConstrainedRunner>.Instance,
+            ["https://petstore3.swagger.io/api/v3"]);
+
+        Assert.Contains("BASE_URL", runner.SyntaxGuide, StringComparison.Ordinal);
+        Assert.Contains("petstore3.swagger.io", runner.SyntaxGuide, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LocalConstrainedRunner_ExposesConfiguredBaseUrlToPythonScope()
+    {
+        LocalConstrainedRunner runner = new(
+            TimeSpan.FromSeconds(5),
+            maxToolCalls: 10,
+            NullLogger<LocalConstrainedRunner>.Instance,
+            ["https://example.test/api"]);
+
+        RunnerResult result = await runner.RunAsync("result = BASE_URL", CancellationToken.None);
+
+        JsonElement final = Assert.IsType<JsonElement>(result.FinalValue);
+        Assert.Equal("https://example.test/api", final.GetString());
+    }
+
+    [Fact]
+    public async Task LocalConstrainedRunner_RejectsHardcodedUrlOutsideConfiguredDataSources()
+    {
+        LocalConstrainedRunner runner = new(
+            TimeSpan.FromSeconds(5),
+            maxToolCalls: 10,
+            NullLogger<LocalConstrainedRunner>.Instance,
+            ["https://petstore3.swagger.io/api/v3"]);
+
+        string code = """
+            import requests
+            response = requests.get("https://petstore.swagger.io/v2/pet/findByStatus", params={"status": "sold"})
+            result = response.json()
+            """;
+
+        InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            runner.RunAsync(code, CancellationToken.None));
+
+        Assert.Contains("configured OpenAPI data sources", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("BASE_URL", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LocalConstrainedRunner_AllowsHardcodedUrlWithinConfiguredDataSources()
+    {
+        LocalConstrainedRunner runner = new(
+            TimeSpan.FromSeconds(5),
+            maxToolCalls: 10,
+            NullLogger<LocalConstrainedRunner>.Instance,
+            ["https://petstore3.swagger.io/api/v3"]);
+
+        string code = """
+            result = "https://petstore3.swagger.io/api/v3/pet/findByStatus"
+            """;
+
+        RunnerResult result = await runner.RunAsync(code, CancellationToken.None);
+        JsonElement final = Assert.IsType<JsonElement>(result.FinalValue);
+        Assert.Equal("https://petstore3.swagger.io/api/v3/pet/findByStatus", final.GetString());
+    }
+
+    [Fact]
     public async Task ExecuteTool_ReturnsRunnerFinalValueOnly()
     {
         ISandboxRunner runner = new StubRunner(new RunnerResult(new { total = 42 }, 0));

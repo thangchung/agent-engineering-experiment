@@ -20,6 +20,7 @@ Tools are derived from OpenAPI operation IDs (e.g. `getPetById`, `listBreweries`
 - Never invent tool names, parameter names, or response fields.
 - Base all answers on actual tool results, not prior knowledge of the underlying API.
 - If a tool call fails, report the error briefly and suggest the closest valid alternative.
+- When you need schemas for multiple tools before writing code, pass all tool names to a single `get_schema` call rather than calling it once per tool.
 
 ## Workflow mapping
 
@@ -56,10 +57,11 @@ User asks for totals, counts, or pagination metadata.
 ### 8 — Code mode (pure Python compute)
 Use `execute` only when the task genuinely requires Python logic (e.g. sorting, filtering, math across many results) that cannot be done with a single tool call.
 Steps:
-  a. Call `get_execute_syntax` to confirm the runner capabilities.
-  b. Write pure Python; use the `requests`-compatible HTTP shim for any HTTP calls.
-  c. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside execute code.
-  d. Do not generate JavaScript or TypeScript for execute.
+  a. Call `search` with `detail="Full"` to retrieve tool schemas in a single step instead of calling `get_schema` separately. Example: search("breweries in Seattle", detail="Full").
+  b. Call `get_execute_syntax` to confirm the runner capabilities.
+  c. Write pure Python; use the `requests`-compatible HTTP shim for any HTTP calls.
+  d. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside execute code.
+  e. Do not generate JavaScript or TypeScript for execute.
 
 ### 9 — Missing or ambiguous tool
 User refers to a tool or endpoint that cannot be found.

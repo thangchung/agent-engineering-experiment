@@ -10,7 +10,10 @@ public static class SandboxRunnerFactory
     /// <summary>
     /// Creates an <see cref="ISandboxRunner"/> from app configuration.
     /// </summary>
-    public static ISandboxRunner Create(IConfiguration configuration, ILoggerFactory loggerFactory)
+    public static ISandboxRunner Create(
+        IConfiguration configuration,
+        ILoggerFactory loggerFactory,
+        IReadOnlyList<string>? allowedBaseUrls = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(loggerFactory);
@@ -30,36 +33,22 @@ public static class SandboxRunnerFactory
                 Domain = domain,
                 ApiKey = configuration["OpenSandbox:ApiKey"],
                 Image = configuration["OpenSandbox:Image"] ?? "ubuntu",
-                TimeoutSeconds = ParseIntOrDefault(configuration["OpenSandbox:TimeoutSeconds"], 5 * 60),
-                ReadyTimeoutSeconds = ParseIntOrDefault(configuration["OpenSandbox:ReadyTimeoutSeconds"], 30),
-                RequestTimeoutSeconds = ParseIntOrDefault(configuration["OpenSandbox:RequestTimeoutSeconds"], 30),
-                UseServerProxy = ParseBoolOrDefault(configuration["OpenSandbox:UseServerProxy"], false),
-                Timeout = TimeSpan.FromMilliseconds(ParseIntOrDefault(configuration["CodeMode:TimeoutMs"], 5000)),
-                MaxToolCalls = ParseIntOrDefault(configuration["CodeMode:MaxToolCalls"], 10),
+                TimeoutSeconds = configuration.GetValue<int>("OpenSandbox:TimeoutSeconds", 5 * 60),
+                ReadyTimeoutSeconds = configuration.GetValue<int>("OpenSandbox:ReadyTimeoutSeconds", 30),
+                RequestTimeoutSeconds = configuration.GetValue<int>("OpenSandbox:RequestTimeoutSeconds", 30),
+                UseServerProxy = configuration.GetValue<bool>("OpenSandbox:UseServerProxy", false),
+                Timeout = TimeSpan.FromMilliseconds(configuration.GetValue<int>("CodeMode:TimeoutMs", 5000)),
+                MaxToolCalls = configuration.GetValue<int>("CodeMode:MaxToolCalls", 10),
             };
 
             return new OpenSandboxRunner(options, loggerFactory);
         }
 
         return new LocalConstrainedRunner(
-            timeout: TimeSpan.FromMilliseconds(ParseIntOrDefault(configuration["CodeMode:TimeoutMs"], 5000)),
-            maxToolCalls: ParseIntOrDefault(configuration["CodeMode:MaxToolCalls"], 10),
-            loggerFactory.CreateLogger<LocalConstrainedRunner>());
+            timeout: TimeSpan.FromMilliseconds(configuration.GetValue<int>("CodeMode:TimeoutMs", 5000)),
+            maxToolCalls: configuration.GetValue<int>("CodeMode:MaxToolCalls", 10),
+            loggerFactory.CreateLogger<LocalConstrainedRunner>(),
+            allowedBaseUrls);
     }
 
-    /// <summary>
-    /// Parses an integer configuration value with fallback default.
-    /// </summary>
-    private static int ParseIntOrDefault(string? value, int defaultValue)
-    {
-        return int.TryParse(value, out int parsed) ? parsed : defaultValue;
-    }
-
-    /// <summary>
-    /// Parses a boolean configuration value with fallback default.
-    /// </summary>
-    private static bool ParseBoolOrDefault(string? value, bool defaultValue)
-    {
-        return bool.TryParse(value, out bool parsed) ? parsed : defaultValue;
-    }
 }

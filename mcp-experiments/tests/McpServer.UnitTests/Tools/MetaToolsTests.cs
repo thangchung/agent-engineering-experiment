@@ -36,18 +36,16 @@ public sealed class MetaToolsTests
     }
 
     [Fact]
-    public void GetSchema_AcceptsSingularAndPluralAliases()
+    public void GetSchema_AcceptsListAndSingleNameParameters()
     {
         ToolRegistry registry = new([TestTools.Create("brewery_search", "Find breweries", "{\"type\":\"object\"}")]);
         DiscoveryTools discoveryTools = new(registry, new WeightedToolSearcher(registry));
 
+        // Deduplication: passing the same name via both toolNames and name must return one result.
         SchemaLookupResponse response = McpToolHandlers.get_schema(
             discoveryTools,
             new UserContext(),
-            toolNames: null,
-            names: null,
-            tools: ["brewery_search"],
-            toolName: null,
+            toolNames: ["brewery_search"],
             name: "brewery_search",
             detail: TestJson.Parse("\"detailed\""));
 
@@ -67,9 +65,6 @@ public sealed class MetaToolsTests
                 discoveryTools,
                 new UserContext(),
                 toolNames: null,
-                names: null,
-                tools: null,
-                toolName: null,
                 name: null,
                 detail: TestJson.Parse("\"detailed\"")));
 

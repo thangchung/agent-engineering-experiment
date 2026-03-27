@@ -105,9 +105,6 @@ public static class OpenApiToolCatalogBuilder
     }
 
     /// <summary>
-    /// Parses an OpenAPI file and builds executable tool descriptors.
-    /// </summary>
-    /// <summary>
     /// Parses multiple OpenAPI files or URLs and builds executable tool descriptors.
     /// </summary>
     public static async Task<IReadOnlyList<ToolDescriptor>> BuildToolsAsync(
@@ -115,6 +112,60 @@ public static class OpenApiToolCatalogBuilder
         CancellationToken ct = default)
     {
         return await BuildToolsAsync(sources, DefaultDocumentLoader, DefaultRequestInvoker, ct);
+    }
+
+    /// <summary>
+    /// Resolves a distinct list of effective HTTP(S) base URLs derived from configured OpenAPI sources.
+    /// These are used by code-mode runners to keep HTTP requests inside known data sources.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> ResolveCodeModeBaseUrlsAsync(
+        IReadOnlyList<OpenApiSourceDefinition> sources,
+        CancellationToken ct = default)
+    {
+        return await ResolveCodeModeBaseUrlsAsync(sources, DefaultDocumentLoader, ct);
+    }
+
+    /// <summary>
+    /// Loads all OpenAPI sources once and returns both tool descriptors and code-mode base URLs.
+    /// Preferred over calling <see cref="BuildToolsAsync"/> and <see cref="ResolveCodeModeBaseUrlsAsync"/>
+    /// separately because it reads each document only once.
+    /// </summary>
+    public static async Task<(IReadOnlyList<ToolDescriptor> Tools, IReadOnlyList<string> CodeModeBaseUrls)> BuildAsync(
+        IReadOnlyList<OpenApiSourceDefinition> sources,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+
+        if (sources.Count == 0)
+        {
+            return ([], []);
+        }
+
+        // Load each document exactly once, then derive both outputs from the same set.
+        List<OpenApiSourceDocument> loaded = await LoadSourceDocumentsAsync(sources, DefaultDocumentLoader, ct);
+        IReadOnlyList<ToolDescriptor> tools = BuildToolsFromLoadedSources(loaded, sources, DefaultRequestInvoker);
+        IReadOnlyList<string> baseUrls = ExtractBaseUrlsFromLoadedSources(loaded);
+        return (tools, baseUrls);
+    }
+
+    /// <summary>
+    /// Resolves effective code-mode base URLs with an injectable document loader for tests.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveCodeModeBaseUrlsAsync(
+        IReadOnlyList<OpenApiSourceDefinition> sources,
+        IOpenApiDocumentLoader documentLoader,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(documentLoader);
+
+        if (sources.Count == 0)
+        {
+            return [];
+        }
+
+        List<OpenApiSourceDocument> loaded = await LoadSourceDocumentsAsync(sources, documentLoader, ct);
+        return ExtractBaseUrlsFromLoadedSources(loaded);
     }
 
     /// <summary>
@@ -135,14 +186,25 @@ public static class OpenApiToolCatalogBuilder
             return [];
         }
 
-        // Load sources with per-source error handling to gracefully fall back if one fails.
-        List<OpenApiSourceDocument> loadedSources = [];
-        foreach (var source in sources)
+        List<OpenApiSourceDocument> loaded = await LoadSourceDocumentsAsync(sources, documentLoader, ct);
+        return BuildToolsFromLoadedSources(loaded, sources, requestInvoker);
+    }
+
+    /// <summary>
+    /// Loads all sources using per-source error handling so one failing source does not block others.
+    /// </summary>
+    private static async Task<List<OpenApiSourceDocument>> LoadSourceDocumentsAsync(
+        IReadOnlyList<OpenApiSourceDefinition> sources,
+        IOpenApiDocumentLoader documentLoader,
+        CancellationToken ct)
+    {
+        List<OpenApiSourceDocument> loaded = [];
+
+        foreach (OpenApiSourceDefinition source in sources)
         {
             try
             {
-                var loadedSource = await documentLoader.LoadAsync(source, ct);
-                loadedSources.Add(loadedSource);
+                loaded.Add(await documentLoader.LoadAsync(source, ct));
             }
             catch (Exception ex)
             {
@@ -153,14 +215,25 @@ public static class OpenApiToolCatalogBuilder
             }
         }
 
+        return loaded;
+    }
+
+    /// <summary>
+    /// Builds tool descriptors from pre-loaded source documents.
+    /// </summary>
+    private static IReadOnlyList<ToolDescriptor> BuildToolsFromLoadedSources(
+        List<OpenApiSourceDocument> loadedSources,
+        IReadOnlyList<OpenApiSourceDefinition> originalSources,
+        IOpenApiRequestInvoker requestInvoker)
+    {
         if (loadedSources.Count == 0)
         {
             throw new InvalidOperationException(
-                $"No OpenAPI sources loaded. Configured sources: {string.Join(", ", sources.Select(s => $"'{s.Name}' ({s.Location})"))}");
+                $"No OpenAPI sources loaded. Configured sources: {string.Join(", ", originalSources.Select(s => $"'{s.Name}' ({s.Location})"))}");
         }
 
         List<ToolDescriptor> tools = [];
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (OpenApiSourceDocument loadedSource in loadedSources)
         {
@@ -192,6 +265,45 @@ public static class OpenApiToolCatalogBuilder
         }
 
         return tools;
+    }
+
+    /// <summary>
+    /// Extracts distinct code-mode base URLs from pre-loaded source documents.
+    /// </summary>
+    private static IReadOnlyList<string> ExtractBaseUrlsFromLoadedSources(IReadOnlyList<OpenApiSourceDocument> loadedSources)
+    {
+        HashSet<string> baseUrls = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (OpenApiSourceDocument loadedSource in loadedSources)
+        {
+            Uri? overrideBaseUri = ResolveOverrideBaseUri(loadedSource.Source.BaseUrlOverride);
+            if (overrideBaseUri is not null)
+            {
+                baseUrls.Add(overrideBaseUri.AbsoluteUri.TrimEnd('/'));
+            }
+
+            foreach ((string routeTemplate, OpenApiPathItem pathItem) in loadedSource.Document.Paths)
+            {
+                foreach ((OperationType operationType, OpenApiOperation operation) in pathItem.Operations)
+                {
+                    Uri? endpointBaseUri = ResolveEndpointBaseUri(
+                        operation.Servers,
+                        pathItem.Servers,
+                        loadedSource.Document.Servers,
+                        overrideBaseUri,
+                        loadedSource.DocumentUri);
+
+                    if (endpointBaseUri is null)
+                    {
+                        continue;
+                    }
+
+                    baseUrls.Add(endpointBaseUri.AbsoluteUri.TrimEnd('/'));
+                }
+            }
+        }
+
+        return baseUrls.OrderBy(static url => url, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     /// <summary>
@@ -322,8 +434,6 @@ public static class OpenApiToolCatalogBuilder
     }
 
     /// <summary>
-    /// Converts a JSON argument to wire format string for path/query placement.
-    /// </summary>
     /// Resolves a primary tool name using OpenAPI operationId or method/path fallback.
     /// </summary>
     private static string ResolvePrimaryToolName(string operationId, OperationType operationType, string routeTemplate)

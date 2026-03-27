@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using McpServer.CodeMode;
 using McpServer.Registry;
+using McpServer.Search;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
@@ -71,6 +72,59 @@ public static class McpToolHandlers
     }
 
     /// <summary>
+    /// Single-step tool discovery and invocation.
+    /// Searches for a matching tool by natural language intent and immediately invokes it
+    /// if a single best match is found. Reduces two-turn search + call_tool flows to one turn
+    /// for the common single-action case.
+    /// </summary>
+    [McpServerTool, Description("Find the best-matching tool by natural language intent and invoke it in one step. Use when you are confident about the action. Returns the tool result directly, or a disambiguation list if multiple tools match equally.")]
+    public static async Task<object?> find_and_call(
+        [Description("Natural language description of what to do, e.g. 'search breweries in Seattle'")] string intent,
+        [Description("Arguments to pass to the matched tool as a JSON object")] JsonElement arguments,
+        [FromServices] IToolSearcher searcher,
+        [FromServices] MetaTools metaTools,
+        [FromServices] UserContext context,
+        [FromServices] ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        ILogger logger = loggerFactory.CreateLogger(typeof(McpToolHandlers));
+        IReadOnlyList<ToolDescriptor> candidates = searcher.Search(intent, 3, context);
+
+        if (candidates.Count == 0)
+        {
+            logger.LogInformation(
+                "MCP handler {HandlerName}: no matching tools found for intent '{Intent}'.",
+                nameof(find_and_call), intent);
+            return "No matching tool found. Use search to browse available tools.";
+        }
+
+        ToolDescriptor best = candidates[0];
+
+        // Exact match by name or only one candidate - invoke directly
+        if (candidates.Count == 1 || best.Name.Equals(intent, StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogInformation(
+                "MCP handler {HandlerName}: invoking tool '{ToolName}' for intent '{Intent}'.",
+                nameof(find_and_call), best.Name, intent);
+
+            Activity.Current?.SetTag("mcp.handler.name", nameof(find_and_call));
+            Activity.Current?.SetTag("mcp.handler.matched.tool", best.Name);
+
+            return await metaTools.CallToolAsync(best.Name, arguments, context, ct);
+        }
+
+        // Ambiguous - return top candidates for the LLM to select from
+        logger.LogInformation(
+            "MCP handler {HandlerName}: ambiguous intent '{Intent}', returning {CandidateCount} candidates.",
+            nameof(find_and_call), intent, candidates.Count);
+
+        Activity.Current?.SetTag("mcp.handler.name", nameof(find_and_call));
+        Activity.Current?.SetTag("mcp.handler.candidates.count", candidates.Count);
+
+        return candidates.Select(t => new { t.Name, t.Description }).ToArray();
+    }
+
+    /// <summary>
     /// Staged discovery: returns a brief list of tools matching the query for code-mode
     /// planning. Follow up with <c>get_schema</c> to retrieve full parameter schemas.
     /// </summary>
@@ -107,18 +161,15 @@ public static class McpToolHandlers
     /// <summary>
     /// Returns input schemas for a set of tool names with optional detail and missing-name reporting.
     /// </summary>
-    [McpServerTool, Description("Retrieve input schemas for tool names. Accepts toolNames plus common aliases such as names, tools, toolName, or name. Default detail is Detailed markdown, and missing tool names are reported.")]
+    [McpServerTool, Description("Retrieve input schemas for tool names. Pass a list via toolNames or a single name via name. Default detail is Detailed markdown, and missing tool names are reported.")]
     public static SchemaLookupResponse get_schema(
         [FromServices] DiscoveryTools discoveryTools,
         [FromServices] UserContext context,
-        [Description("Preferred parameter: list of tool names to retrieve schemas for")] IReadOnlyList<string>? toolNames = null,
-        [Description("Alias for toolNames")] IReadOnlyList<string>? names = null,
-        [Description("Alias for toolNames")] IReadOnlyList<string>? tools = null,
-        [Description("Singular alias for one tool name")] string? toolName = null,
-        [Description("Singular alias for one tool name")] string? name = null,
+        [Description("List of tool names to retrieve schemas for")] IReadOnlyList<string>? toolNames = null,
+        [Description("Single tool name shorthand - equivalent to toolNames with one entry")] string? name = null,
         [Description("Schema verbosity: Brief name-only, Detailed compact markdown, Full full JSON schema. Also accepts 0, 1, or 2.")] JsonElement? detail = null)
     {
-        IReadOnlyList<string> requestedToolNames = ResolveSchemaToolNames(toolNames, names, tools, toolName, name);
+        IReadOnlyList<string> requestedToolNames = ResolveSchemaToolNames(toolNames, name);
         SchemaDetailLevel resolvedDetail = detail.HasValue ? ParseSchemaDetailLevel(detail.Value, SchemaDetailLevel.Detailed, nameof(detail)) : SchemaDetailLevel.Detailed;
         return discoveryTools.GetSchema(requestedToolNames, context, resolvedDetail);
     }
@@ -138,7 +189,7 @@ public static class McpToolHandlers
                 _ => defaultValue,
             },
             // For booleans, arrays, objects, or any other unrecognised type, fall back to
-            // the caller's default rather than throwing — the LLM intent is ambiguous.
+            // the caller's default rather than throwing - the LLM intent is ambiguous.
             _ => defaultValue,
         };
     }
@@ -167,51 +218,36 @@ public static class McpToolHandlers
 
     private static IReadOnlyList<string> ResolveSchemaToolNames(
         IReadOnlyList<string>? toolNames,
-        IReadOnlyList<string>? names,
-        IReadOnlyList<string>? tools,
-        string? toolName,
         string? name)
     {
         List<string> requested = [];
-        AppendNames(requested, toolNames);
-        AppendNames(requested, names);
-        AppendNames(requested, tools);
-        AppendName(requested, toolName);
-        AppendName(requested, name);
+
+        if (toolNames is not null)
+        {
+            foreach (string toolName in toolNames)
+            {
+                if (!string.IsNullOrWhiteSpace(toolName))
+                {
+                    requested.Add(toolName.Trim());
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            requested.Add(name.Trim());
+        }
 
         if (requested.Count == 0)
         {
             throw new ArgumentException(
-                "Provide at least one tool name using toolNames, names, tools, toolName, or name.",
+                "Provide at least one tool name using toolNames or name.",
                 "arguments");
         }
 
         return requested
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-    }
-
-    private static void AppendNames(List<string> requested, IReadOnlyList<string>? values)
-    {
-        if (values is null)
-        {
-            return;
-        }
-
-        foreach (string value in values)
-        {
-            AppendName(requested, value);
-        }
-    }
-
-    private static void AppendName(List<string> requested, string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return;
-        }
-
-        requested.Add(value.Trim());
     }
 
     /// <summary>
@@ -226,7 +262,7 @@ public static class McpToolHandlers
 
     /// <summary>
     /// Executes constrained code and returns only the final value.
-    /// The required code syntax depends on the configured runner — call <c>get_execute_syntax</c> first.
+    /// The required code syntax depends on the configured runner - call <c>get_execute_syntax</c> first.
     /// </summary>
     [McpServerTool, Description("""
         Execute constrained code and return the final result.

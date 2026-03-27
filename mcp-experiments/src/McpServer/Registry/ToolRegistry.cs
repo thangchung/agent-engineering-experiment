@@ -4,10 +4,22 @@ namespace McpServer.Registry;
 
 /// <summary>
 /// In-memory registry that enforces visibility checks before invocation.
+/// A name-keyed dictionary provides O(1) lookups for <see cref="FindByName"/>
+/// and <see cref="InvokeAsync"/> instead of O(n) linear scans.
 /// </summary>
-public sealed class ToolRegistry(IReadOnlyList<ToolDescriptor> tools) : IToolRegistry
+public sealed class ToolRegistry : IToolRegistry
 {
-    private readonly IReadOnlyList<ToolDescriptor> _tools = tools;
+    private readonly IReadOnlyList<ToolDescriptor> _tools;
+    private readonly Dictionary<string, ToolDescriptor> _byName;
+
+    /// <summary>
+    /// Initializes the registry and builds the name index.
+    /// </summary>
+    public ToolRegistry(IReadOnlyList<ToolDescriptor> tools)
+    {
+        _tools = tools;
+        _byName = tools.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Returns tools that are visible to the provided caller context.
@@ -26,8 +38,12 @@ public sealed class ToolRegistry(IReadOnlyList<ToolDescriptor> tools) : IToolReg
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(context);
 
-        return _tools.FirstOrDefault(tool =>
-            tool.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && tool.IsVisible(context));
+        if (!_byName.TryGetValue(name, out ToolDescriptor? tool))
+        {
+            return null;
+        }
+
+        return tool.IsVisible(context) ? tool : null;
     }
 
     /// <summary>
@@ -38,9 +54,7 @@ public sealed class ToolRegistry(IReadOnlyList<ToolDescriptor> tools) : IToolReg
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(context);
 
-        ToolDescriptor? tool = _tools.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-        if (tool is null)
+        if (!_byName.TryGetValue(name, out ToolDescriptor? tool))
         {
             throw new ToolNotFoundException(name);
         }

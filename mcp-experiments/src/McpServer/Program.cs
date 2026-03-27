@@ -29,7 +29,7 @@ List<OpenApiToolCatalogBuilder.OpenApiSourceDefinition> openApiSources =
     .. OpenApiToolCatalogBuilder.ResolveSources(builder.Configuration, AppContext.BaseDirectory),
 ];
 
-// Keep status pinned and load external API tools from OpenAPI instead of hard-coding.
+IReadOnlyList<string> codeModeBaseUrls;
 List<ToolDescriptor> tools =
 [
     new ToolDescriptor(
@@ -43,7 +43,9 @@ List<ToolDescriptor> tools =
         Handler: (_, _) => Task.FromResult<object?>(new { ok = true, timestamp = DateTimeOffset.UtcNow })),
 ];
 
-tools.AddRange(await OpenApiToolCatalogBuilder.BuildToolsAsync(openApiSources));
+// BuildAsync loads each OpenAPI document exactly once and returns both tools and base URLs.
+(IReadOnlyList<ToolDescriptor> openApiTools, codeModeBaseUrls) = await OpenApiToolCatalogBuilder.BuildAsync(openApiSources);
+tools.AddRange(openApiTools);
 
 BootstrapConsoleReporter.WriteReport(openApiSources, tools);
 
@@ -54,7 +56,10 @@ builder.Services.AddSingleton<DiscoveryTools>();
 // Runtime selection defaults to local constrained execution.
 // Set CodeMode:Runner=opensandbox and OpenSandbox:* settings to enable OpenSandbox-backed preflight.
 builder.Services.AddSingleton<ISandboxRunner>(sp =>
-    SandboxRunnerFactory.Create(builder.Configuration, sp.GetRequiredService<ILoggerFactory>()));
+    SandboxRunnerFactory.Create(
+        builder.Configuration,
+        sp.GetRequiredService<ILoggerFactory>(),
+        codeModeBaseUrls));
 builder.Services.AddSingleton<ExecuteTool>();
 builder.Services.AddSingleton<CopilotChatService>();
 // Default anonymous context — replace with per-request auth resolution in production.

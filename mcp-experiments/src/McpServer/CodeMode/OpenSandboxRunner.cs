@@ -85,7 +85,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         activity?.SetTag("mcp.sandbox.image", options.Image);
 
         // Code mode must stay isolated from tool-search meta-tools.
-        if (ContainsForbiddenMetaToolUsage(code))
+        if (SandboxCodeGuard.ContainsForbiddenMetaToolUsage(code))
         {
             throw new InvalidOperationException(
             "Code mode is isolated from tool-search tools. " +
@@ -119,17 +119,6 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             throw;
         }
     }
-
-    /// <summary>
-    /// Returns <see langword="true"/> when <paramref name="code"/> attempts to invoke
-    /// tool-search meta-tools inside code mode.
-    /// </summary>
-    private static bool ContainsForbiddenMetaToolUsage(string code) =>
-        code.Contains("call_tool(", StringComparison.Ordinal) ||
-        code.Contains("search_tools(", StringComparison.Ordinal) ||
-        code.Contains("search(", StringComparison.Ordinal) ||
-        code.Contains("get_schema(", StringComparison.Ordinal) ||
-        code.Contains("await call_tool(", StringComparison.Ordinal);
 
     /// <summary>
     /// Runs OpenSandbox preflight once and caches availability for strict OpenSandbox execution.
