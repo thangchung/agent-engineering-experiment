@@ -26,6 +26,16 @@ dotnet run --project src/McpServer/McpServer.csproj
 
 The current server prints a startup smoke output for registry/search/execute wiring.
 
+### CLI Query Mode
+
+In CLI mode, `query` is explicit tool invocation only. Natural-language intent routing inside CLI is disabled.
+
+```bash
+dotnet run --no-launch-profile --project src/McpServer/McpServer.csproj -- query --tool brewery_search --args '{"query":"moon","per_page":5,"page":1}'
+```
+
+If `--tool` is omitted or a free-text intent is provided, CLI returns an error and does not call GitHub Copilot chat orchestration.
+
 ## Run Blazor MCP Test Website
 
 This repo includes a simple Blazor UI to test OpenBrewery use cases through the MCP server.

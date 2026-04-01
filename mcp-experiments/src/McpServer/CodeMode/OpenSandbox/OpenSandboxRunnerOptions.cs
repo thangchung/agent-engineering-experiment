@@ -1,4 +1,6 @@
-namespace McpServer.CodeMode;
+using OpenSandbox.Config;
+
+namespace McpServer.CodeMode.OpenSandbox;
 
 /// <summary>
 /// Configuration values used by the OpenSandbox-backed runner.
@@ -16,9 +18,14 @@ public sealed class OpenSandboxRunnerOptions
     public string? ApiKey { get; init; }
 
     /// <summary>
-    /// Sandbox image used for preflight checks.
+    /// Connection protocol (http or https).
     /// </summary>
-    public string Image { get; init; } = "ubuntu";
+    public ConnectionProtocol Protocol { get; init; } = ConnectionProtocol.Http;
+
+    /// <summary>
+    /// Sandbox image used for code execution.
+    /// </summary>
+    public string Image { get; init; } = "python:3.12-slim";
 
     /// <summary>
     /// Sandbox TTL in seconds.

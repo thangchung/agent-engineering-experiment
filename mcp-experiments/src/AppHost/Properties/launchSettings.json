@@ -10,6 +10,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true",
+        "Dashboard__Frontend__BrowserToken": "dev-dashboard-token",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19117",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20158"
       }
@@ -23,6 +24,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true",
+        "Dashboard__Frontend__BrowserToken": "dev-dashboard-token",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19117",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20158"
       }

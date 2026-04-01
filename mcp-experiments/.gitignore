@@ -8,3 +8,4 @@ obj/
 .env
 **/*/secret.yaml
 data-protection-keys/
+.idea/

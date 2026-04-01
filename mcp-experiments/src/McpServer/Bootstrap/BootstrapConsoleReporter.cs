@@ -2,9 +2,11 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
 using McpServer.Registry;
+using McpServer.CodeMode;
 using McpServer.Tools;
 using Microsoft.AspNetCore.Mvc;
 using ModelContextProtocol.Server;
+using Spectre.Console;
 
 namespace McpServer.Bootstrap;
 
@@ -23,12 +25,15 @@ internal static class BootstrapConsoleReporter
         ArgumentNullException.ThrowIfNull(openApiSources);
         ArgumentNullException.ThrowIfNull(tools);
 
+        AnsiConsole.Write(new Rule("[aqua]Bootstrap[/]").RuleStyle("grey"));
+
         if (openApiSources.Count > 0)
         {
-            Console.WriteLine($"[Bootstrap] Loading {openApiSources.Count} OpenAPI source(s): {string.Join(", ", openApiSources.Select(s => $"'{s.Name}'"))}");
+            string sourceSummary = string.Join(", ", openApiSources.Select(static source => $"'{Markup.Escape(source.Name)}'"));
+            AnsiConsole.MarkupLine($"[grey][[Bootstrap]][/] Loading [aqua]{openApiSources.Count}[/] OpenAPI source(s): {sourceSummary}");
         }
 
-        Console.WriteLine($"[Bootstrap] Total tools registered: {tools.Count} (status + OpenAPI-generated)");
+        AnsiConsole.MarkupLine($"[grey][[Bootstrap]][/] Total tools registered: [aqua]{tools.Count}[/] (status + OpenAPI-generated)");
 
         List<IGrouping<string, ToolDescriptor>> toolsByTag = tools
             .Where(static tool => !tool.IsSynthetic && tool.Tags.Count > 0)
@@ -36,22 +41,29 @@ internal static class BootstrapConsoleReporter
             .OrderBy(static group => group.Key)
             .ToList();
 
+        Tree toolTree = new("[grey][[Bootstrap]][/] Tool inventory")
+        {
+            Guide = TreeGuide.Line,
+        };
+
         foreach (IGrouping<string, ToolDescriptor> group in toolsByTag)
         {
-            Console.WriteLine($"[Bootstrap]   - {group.Key}: {group.Count()} tool(s)");
+            TreeNode groupNode = toolTree.AddNode($"[yellow]{Markup.Escape(group.Key)}[/]: [aqua]{group.Count()}[/] tool(s)");
 
             foreach (ToolDescriptor tool in group.OrderBy(static tool => tool.Name, StringComparer.OrdinalIgnoreCase))
             {
-                Console.WriteLine($"[Bootstrap]     * {tool.Name}: {ToShortDescription(tool.Description)}");
+                groupNode.AddNode($"[white]{Markup.Escape(tool.Name)}[/]: [grey]{Markup.Escape(ToShortDescription(tool.Description))}[/]");
             }
         }
+
+        AnsiConsole.Write(toolTree);
 
         WritePromptSurfaceComparison(tools);
     }
 
     private static void WritePromptSurfaceComparison(IReadOnlyList<ToolDescriptor> tools)
     {
-        IReadOnlyList<MethodInfo> exposedHandlers = GetExposedMcpHandlers();
+        IReadOnlyList<MethodInfo> exposedHandlers = McpHandlerCatalog.GetExposedToolMethods();
 
         string traditionalPayload = BuildPromptSurfacePayload(
             tools.Select(static tool => (tool.Name, tool.Description, tool.InputJsonSchema)));
@@ -66,7 +78,7 @@ internal static class BootstrapConsoleReporter
 
         string pureToolSearchPayload = BuildPromptSurfacePayload(
             exposedHandlers
-                .Where(method => method.Name is nameof(McpToolHandlers.search_tools) or nameof(McpToolHandlers.call_tool))
+                .Where(method => method.Name is nameof(ToolSearchHandlers.search_tools) or nameof(ToolSearchHandlers.call_tool))
                 .Select(method =>
                     (
                         method.Name,
@@ -83,10 +95,28 @@ internal static class BootstrapConsoleReporter
         int pureToolSearchReductionTokens = traditionalTokens - pureToolSearchTokens;
         double pureToolSearchReductionPercentage = traditionalTokens == 0 ? 0 : pureToolSearchReductionTokens * 100d / traditionalTokens;
 
-        Console.WriteLine("[Bootstrap] Context footprint (approx tokens using ceil(chars/4)):");
-        Console.WriteLine($"[Bootstrap]   - traditional-mcp: {traditionalToolCount} tools, {traditionalTokens} tok (baseline)");
-        Console.WriteLine($"[Bootstrap]   - tool-search+code-mode: {currentToolCount} tools, {currentTokens} tok, save {currentReductionTokens} tok ({currentReductionPercentage:F1}%)");
-        Console.WriteLine($"[Bootstrap]   - pure-tool-search: {pureToolSearchCount} tools, {pureToolSearchTokens} tok, save {pureToolSearchReductionTokens} tok ({pureToolSearchReductionPercentage:F1}%)");
+        AnsiConsole.MarkupLine("[grey][[Bootstrap]][/] Context footprint ([italic]approx tokens using ceil(chars/4)[/]):");
+
+        Table table = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn("Mode")
+            .AddColumn(new TableColumn("Tools").RightAligned())
+            .AddColumn(new TableColumn("Tokens").RightAligned())
+            .AddColumn("Savings");
+
+        table.AddRow("traditional-mcp", traditionalToolCount.ToString(), traditionalTokens.ToString(), "baseline");
+        table.AddRow(
+            "tool-search+code-mode",
+            currentToolCount.ToString(),
+            currentTokens.ToString(),
+            $"{currentReductionTokens} tok ({currentReductionPercentage:F1}%)");
+        table.AddRow(
+            "pure-tool-search",
+            pureToolSearchCount.ToString(),
+            pureToolSearchTokens.ToString(),
+            $"{pureToolSearchReductionTokens} tok ({pureToolSearchReductionPercentage:F1}%)");
+
+        AnsiConsole.Write(table);
     }
 
     private static string ToShortDescription(string description)
@@ -155,15 +185,6 @@ internal static class BootstrapConsoleReporter
             description = tool.Description,
             inputSchema = tool.Schema,
         }));
-    }
-
-    private static IReadOnlyList<MethodInfo> GetExposedMcpHandlers()
-    {
-        return typeof(McpToolHandlers)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null)
-            .OrderBy(method => method.Name, StringComparer.Ordinal)
-            .ToArray();
     }
 
     private static (int ToolCount, int TokenCount) MeasurePromptSurface(string payload)

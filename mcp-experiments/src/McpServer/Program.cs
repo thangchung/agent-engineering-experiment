@@ -1,5 +1,8 @@
 using System.Reflection;
 using System.Text.Json;
+using McpServer.Cli;
+using McpServer.Cli.Commands;
+using McpServer.Cli.Infrastructure;
 using McpServer;
 using McpServer.Bootstrap;
 using McpServer.CodeMode;
@@ -9,14 +12,23 @@ using McpServer.Search;
 using McpServer.Services;
 using McpServer.Tools;
 using ModelContextProtocol.Server;
+using Spectre.Console.Cli;
 
 // Streamable-HTTP MCP server. Connect via MCP Inspector or any HTTP-based MCP client:
 //   Transport: Streamable HTTP
 //   URL:       http://localhost:5100/mcp
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+CliConfig cliConfig = ConfigLoader.Load(builder.Configuration);
+bool cliVerbose = args.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
 
 // MCP clients sometimes probe non-exposed tool names; suppress noisy internal error logs for those expected probes.
 builder.Logging.AddFilter("ModelContextProtocol.Server.McpServer", LogLevel.Critical);
+
+if (cliConfig.EnableCliMode && !cliVerbose)
+{
+    builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+    builder.Logging.AddFilter("Polly", LogLevel.Warning);
+}
 
 builder.AddServiceDefaults();
 
@@ -47,12 +59,17 @@ List<ToolDescriptor> tools =
 (IReadOnlyList<ToolDescriptor> openApiTools, codeModeBaseUrls) = await OpenApiToolCatalogBuilder.BuildAsync(openApiSources);
 tools.AddRange(openApiTools);
 
-BootstrapConsoleReporter.WriteReport(openApiSources, tools);
+if (cliConfig.EnableStatistic)
+{
+    BootstrapConsoleReporter.WriteReport(openApiSources, tools);
+}
 
 builder.Services.AddSingleton<IToolRegistry>(new ToolRegistry(tools));
 builder.Services.AddSingleton<IToolSearcher, WeightedToolSearcher>();
 builder.Services.AddSingleton<MetaTools>();
+builder.Services.AddSingleton<ToolInvoker>();
 builder.Services.AddSingleton<DiscoveryTools>();
+builder.Services.AddSingleton<CodeModeWorkflowGuard>();
 // Runtime selection defaults to local constrained execution.
 // Set CodeMode:Runner=opensandbox and OpenSandbox:* settings to enable OpenSandbox-backed preflight.
 builder.Services.AddSingleton<ISandboxRunner>(sp =>
@@ -64,6 +81,13 @@ builder.Services.AddSingleton<ExecuteTool>();
 builder.Services.AddSingleton<CopilotChatService>();
 // Default anonymous context — replace with per-request auth resolution in production.
 builder.Services.AddSingleton(new UserContext());
+builder.Services.AddSingleton(new CliRuntimeOptions(cliVerbose));
+
+if (cliConfig.EnableCliMode)
+{
+    await RunCliModeAsync(builder.Services, args);
+    return;
+}
 
 // WithHttpTransport uses the MCP streamable-HTTP protocol (not legacy SSE).
 // WithToolsFromAssembly discovers all [McpServerToolType] classes in this assembly.
@@ -74,11 +98,7 @@ builder.Services
 
 WebApplication app = builder.Build();
 
-HashSet<string> exposedMcpToolNames = typeof(McpToolHandlers)
-    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-    .Where(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null)
-    .Select(method => method.Name)
-    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+HashSet<string> exposedMcpToolNames = McpHandlerCatalog.GetExposedToolNames();
 
 app.Use(async (context, next) =>
 {
@@ -174,3 +194,34 @@ app.MapPost("/chat/reset", async (CopilotChatService chatService, CancellationTo
 });
 
 await app.RunAsync();
+
+static async Task RunCliModeAsync(IServiceCollection services, string[] args)
+{
+    IServiceCollection cliServices = new ServiceCollection();
+    foreach (ServiceDescriptor descriptor in services)
+    {
+        cliServices.Add(descriptor);
+    }
+
+    TypeRegistrar registrar = new(cliServices);
+    CommandApp app = new(registrar);
+
+    app.Configure(config =>
+    {
+        config.SetApplicationName("mcp-server-cli");
+        config.ValidateExamples();
+        config.PropagateExceptions();
+        config.AddBranch("tools", tools =>
+        {
+            tools.AddCommand<ToolsListCommand>("list");
+            tools.AddCommand<ToolsShowCommand>("show");
+        });
+        config.AddCommand<QueryCommand>("query");
+        config.AddCommand<ServeCommand>("serve");
+    });
+
+    ToolServiceProvider.Root = registrar.GetServiceProvider();
+
+    string[] effectiveArgs = args.Length == 0 ? ["--help"] : args;
+    await app.RunAsync(effectiveArgs);
+}

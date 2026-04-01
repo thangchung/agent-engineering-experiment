@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   opensandbox-server:
-    image: opensandbox/server:v0.1.8
+    image: docker.io/opensandbox/server:v0.1.8
     container_name: opensandbox-server
     restart: unless-stopped
     ports:
@@ -10,6 +10,18 @@ services:
     environment:
       # For local no-auth mode, keep API key empty.
       OPEN_SANDBOX_API_KEY: ""
+      # Optional OpenTelemetry passthrough (same variables AppHost forwards).
+      # Use host.docker.internal when the collector is running on the host.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: ${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-}
+      OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: ${OTEL_EXPORTER_OTLP_TRACES_PROTOCOL:-}
+      OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: ${OTEL_EXPORTER_OTLP_METRICS_PROTOCOL:-}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-opensandbox-server}
       # If your server config supports explicit bind/port env vars, set them here.
       # OPEN_SANDBOX_HOST: 0.0.0.0
       # OPEN_SANDBOX_PORT: 8080

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using McpServer.CodeMode;
+using McpServer.CodeMode.Local;
 using McpServer.Registry;
 using System.Text.Json;
 

@@ -136,3 +136,8 @@ Environment variables required: `SANDBOX_DOMAIN`, `SANDBOX_API_KEY`.
 - **Sandbox is ephemeral**: create one per `execute` call, kill it when done. Never reuse across requests.
 - **ToolRegistry is the source of truth**: real tools are registered there, not directly with the MCP server.
 - **Always pin tools that need to be visible upfront** (e.g., `help`, `search_tools`) so they appear in `list_tools` without requiring a search step.
+
+# Principles
+
+- KISS/YAGNI/DRY/Boy-Scout principles apply. Implement the simplest thing that could possibly work to explore these patterns. Avoid over-engineering or adding features not required by the core experiments.
+- TDD red-green cycle for all new code. Write tests first, watch them fail, then implement the minimum code to make them pass.

@@ -9,6 +9,10 @@ namespace McpServer.Services;
 /// </summary>
 public sealed class CopilotChatService : IAsyncDisposable
 {
+    private const int DefaultSendTimeoutSeconds = 120;
+    private const int MaxSendTimeoutSeconds = 150;
+    private const int HardTimeoutBufferSeconds = 5;
+
     private const string PromptModeSystem = """
 You are an MCP tool orchestration assistant. One or more OpenAPI specifications are loaded at startup and each HTTP operation is registered as an MCP tool. You do not know tool names in advance — always discover them via search before acting.
 
@@ -19,8 +23,10 @@ Tools are derived from OpenAPI operation IDs (e.g. `getPetById`, `listBreweries`
 - Always call `search` before invoking a tool you have not confirmed exists.
 - Never invent tool names, parameter names, or response fields.
 - Base all answers on actual tool results, not prior knowledge of the underlying API.
-- If a tool call fails, report the error briefly and suggest the closest valid alternative.
+- If any tool call fails (search, get_schema, call_tool, or execute), report the error directly to the user. Do not attempt fallback strategies or alternative approaches.
 - When you need schemas for multiple tools before writing code, pass all tool names to a single `get_schema` call rather than calling it once per tool.
+- **Code mode and tool-search-tool are mutually exclusive workflows.** Once you begin code mode (search → get_schema → get_execute_syntax → execute), you must use ONLY the execute result. Do NOT call `call_tool` or `search_tools` after a successful `execute`. Similarly, do NOT call `execute` after using `call_tool`.
+- After `execute` returns successfully, treat its output as the final answer. Do not re-fetch or verify the data with additional tool calls.
 
 ## Workflow mapping
 
@@ -56,18 +62,29 @@ User asks for totals, counts, or pagination metadata.
 
 ### 8 — Code mode (pure Python compute)
 Use `execute` only when the task genuinely requires Python logic (e.g. sorting, filtering, math across many results) that cannot be done with a single tool call.
+Strict order is mandatory: `search` -> `get_schema` -> `get_execute_syntax` -> `execute`.
+Do not skip `get_schema` even if `search(detail="Full")` appears sufficient.
 Steps:
-  a. Call `search` with `detail="Full"` to retrieve tool schemas in a single step instead of calling `get_schema` separately. Example: search("breweries in Seattle", detail="Full").
-  b. Call `get_execute_syntax` to confirm the runner capabilities.
-  c. Write pure Python; use the `requests`-compatible HTTP shim for any HTTP calls.
-  d. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside execute code.
-  e. Do not generate JavaScript or TypeScript for execute.
+    a. Call `search` to discover candidate tools.
+    b. Call `get_schema` for the chosen tool names.
+    c. Call `get_execute_syntax` to confirm runner capabilities.
+    d. For OpenSandbox runner, generate Python that can fetch required API data directly inside execute code (for example via `requests.get(..., timeout=10)`) when appropriate.
+    e. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside execute code.
+    f. Do not generate JavaScript or TypeScript for execute.
+**Critical:** Once `execute` returns a result (success or failure), your turn is DONE.
+- On success: present the execute result to the user. Do NOT call `call_tool`, `search_tools`, or any other tool after this point.
+- On failure: report the error directly to the user. Do NOT fall back to tool-search-tool or any other approach.
 
 ### 9 — Missing or ambiguous tool
 User refers to a tool or endpoint that cannot be found.
 → Do not hallucinate a tool name or parameters.
 → Report that the tool was not found and suggest the closest matches from `search`.
 
+
+## Error handling
+- **No fallback between workflows**: Code mode and tool-search-tool are separate workflows. Never mix them in a single turn. If one workflow produces a result (success or failure), do not invoke the other.
+- **Direct error reporting**: Present the error message as-is; do not wrap, reframe, or suggest workarounds unless explicitly helpful.
+- **Tool-search failures**: If `search` fails, report it directly. Do not attempt alternative discovery methods.
 ## Output rules
 - Never expose internal reasoning or chain-of-thought.
 - Use bullet lists for tool name enumerations.
@@ -82,6 +99,7 @@ User refers to a tool or endpoint that cannot be found.
     private readonly string mcpEndpoint;
     private readonly string mcpServerName;
     private readonly TimeSpan sendTimeout;
+    private readonly TimeSpan hardSendTimeout;
     private readonly ILogger<CopilotChatService> logger;
     private static readonly ActivitySource ActivitySource = new("McpServer.CopilotChatService");
 
@@ -96,13 +114,17 @@ User refers to a tool or endpoint that cannot be found.
         mcpServerName = configuration["Copilot:McpServerName"] ?? "mcp-experiments";
         this.logger = logger;
 
-        int configuredTimeoutSeconds = configuration.GetValue<int?>("Copilot:SendTimeoutSeconds") ?? 180;
+        int configuredTimeoutSeconds = configuration.GetValue<int?>("Copilot:SendTimeoutSeconds") ?? DefaultSendTimeoutSeconds;
         if (configuredTimeoutSeconds <= 0)
         {
-            configuredTimeoutSeconds = 180;
+            configuredTimeoutSeconds = DefaultSendTimeoutSeconds;
         }
 
+        configuredTimeoutSeconds = Math.Min(configuredTimeoutSeconds, MaxSendTimeoutSeconds);
+
         sendTimeout = TimeSpan.FromSeconds(configuredTimeoutSeconds);
+        // Guard against SDK-level waits that do not honor the provided timeout reliably.
+        hardSendTimeout = sendTimeout + TimeSpan.FromSeconds(HardTimeoutBufferSeconds);
     }
 
     public async Task<ChatTurnMetrics> SendPromptAsync(string prompt, CancellationToken cancellationToken = default)
@@ -126,10 +148,7 @@ User refers to a tool or endpoint that cannot be found.
             attemptCount++;
             totalPromptTokens += promptTokensPerAttempt;
 
-            var response = await session!.SendAndWaitAsync(new MessageOptions
-            {
-                Prompt = prompt,
-            }, sendTimeout, cancellationToken);
+            var response = await SendWithHardTimeoutAsync(prompt, cancellationToken);
 
             string content = response?.Data?.Content ?? "(no response)";
             int completionTokens = CountTokens(content);
@@ -178,10 +197,7 @@ User refers to a tool or endpoint that cannot be found.
 
             try
             {
-                var retryResponse = await session!.SendAndWaitAsync(new MessageOptions
-                {
-                    Prompt = prompt,
-                }, sendTimeout, cancellationToken);
+                var retryResponse = await SendWithHardTimeoutAsync(prompt, cancellationToken);
 
                 string retryContent = retryResponse?.Data?.Content ?? "(no response)";
                 int retryCompletionTokens = CountTokens(retryContent);
@@ -313,6 +329,32 @@ User refers to a tool or endpoint that cannot be found.
         }
 
         return ex.InnerException is not null && IsSessionNotFoundException(ex.InnerException);
+    }
+
+    private async Task<AssistantMessageEvent?> SendWithHardTimeoutAsync(string prompt, CancellationToken cancellationToken)
+    {
+        Task<AssistantMessageEvent?> sendTask = session!.SendAndWaitAsync(new MessageOptions
+        {
+            Prompt = prompt,
+        }, sendTimeout, cancellationToken);
+
+        try
+        {
+            return await sendTask.WaitAsync(hardSendTimeout, cancellationToken);
+        }
+        catch (TimeoutException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Copilot send exceeded hard timeout. Requested timeout: {RequestedTimeoutSeconds}s, hard timeout: {HardTimeoutSeconds}s.",
+                sendTimeout.TotalSeconds,
+                hardSendTimeout.TotalSeconds);
+
+            throw new TimeoutException(
+                $"Copilot did not return within {hardSendTimeout.TotalSeconds:0}s. " +
+                "Try again with a shorter prompt or increase Copilot:SendTimeoutSeconds.",
+                ex);
+        }
     }
 
     private static void ValidateConfiguredToken(string? token)

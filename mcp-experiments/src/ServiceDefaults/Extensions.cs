@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -27,7 +28,7 @@ public static class Extensions
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
 
-        int configuredTimeoutSeconds = builder.Configuration.GetValue<int?>("HttpClient:StandardResilienceTimeoutSeconds") ?? 300;
+        int configuredTimeoutSeconds = builder.Configuration.GetValue<int?>("HttpClient:StandardResilienceTimeoutSeconds") ?? 60;
         if (configuredTimeoutSeconds <= 0)
         {
             configuredTimeoutSeconds = 300;
@@ -88,8 +89,16 @@ public static class Extensions
                     .AddAspNetCoreInstrumentation(options =>
                     {
                         options.Filter = context =>
-                            !context.Request.Path.StartsWithSegments(HealthEndpointPath)
-                            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath);
+                        {
+                            PathString path = context.Request.Path;
+
+                            // Ignore health probes and Blazor transport noise so traces focus on business operations.
+                            return !path.StartsWithSegments(HealthEndpointPath)
+                                && !path.StartsWithSegments(AlivenessEndpointPath)
+                                && !path.StartsWithSegments("/_blazor")
+                                && !path.StartsWithSegments("/_framework")
+                                && !path.StartsWithSegments("/_vs");
+                        };
                     })
                     .AddHttpClientInstrumentation();
             });

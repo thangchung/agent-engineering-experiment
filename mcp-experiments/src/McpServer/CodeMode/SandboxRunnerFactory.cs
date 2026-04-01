@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using McpServer.CodeMode.Local;
+using McpServer.CodeMode.OpenSandbox;
 
 namespace McpServer.CodeMode;
 
@@ -32,11 +34,11 @@ public static class SandboxRunnerFactory
             {
                 Domain = domain,
                 ApiKey = configuration["OpenSandbox:ApiKey"],
-                Image = configuration["OpenSandbox:Image"] ?? "ubuntu",
+                Image = configuration["OpenSandbox:Image"] ?? "python:3.12-slim",
                 TimeoutSeconds = configuration.GetValue<int>("OpenSandbox:TimeoutSeconds", 5 * 60),
                 ReadyTimeoutSeconds = configuration.GetValue<int>("OpenSandbox:ReadyTimeoutSeconds", 30),
                 RequestTimeoutSeconds = configuration.GetValue<int>("OpenSandbox:RequestTimeoutSeconds", 30),
-                UseServerProxy = configuration.GetValue<bool>("OpenSandbox:UseServerProxy", false),
+                UseServerProxy = configuration.GetValue<bool>("OpenSandbox:UseServerProxy", true),
                 Timeout = TimeSpan.FromMilliseconds(configuration.GetValue<int>("CodeMode:TimeoutMs", 5000)),
                 MaxToolCalls = configuration.GetValue<int>("CodeMode:MaxToolCalls", 10),
             };

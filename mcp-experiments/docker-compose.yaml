@@ -1,4 +1,17 @@
 services:
+  opensandbox-server:
+    image: docker.io/opensandbox/server:v0.1.8
+    container_name: opensandbox-server
+    restart: unless-stopped
+    environment:
+      OPEN_SANDBOX_API_KEY: ""
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_OPENSANDBOX:-opensandbox-server}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT_OPENSANDBOX:-http://aspire-dashboard:18889}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL_OPENSANDBOX:-grpc}
+    volumes:
+      - ./deploy/opensandbox.config.toml:/etc/opensandbox/config.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
     container_name: aspire-dashboard
@@ -7,9 +20,7 @@ services:
       - "4317:18889"   # OTLP/gRPC endpoint
       - "4318:18890"   # OTLP/HTTP endpoint
     environment:
-      # Allow anonymous access for local development.
-      # Remove this and set Dashboard__Frontend__BrowserToken for shared envs.
-      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+      Dashboard__Frontend__AuthMode: Unsecured
     restart: unless-stopped
 
   mcp-server:
@@ -20,12 +31,21 @@ services:
     container_name: mcp-server
     environment:
       Copilot__GitHubToken: ${COPILOT_GITHUB_TOKEN}
+      CodeMode__Runner: opensandbox
+      CodeMode__TimeoutMs: 90000
+      Copilot__SendTimeoutSeconds: 120
+      OpenSandbox__Domain: opensandbox-server:8080
+      OpenSandbox__Image: python:3.12-slim
+      OpenSandbox__ReadyTimeoutSeconds: 60
+      OpenSandbox__RequestTimeoutSeconds: 30
+      OpenSandbox__ApiKey: ""
       OTEL_SERVICE_NAME: mcp-server
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
       - "8081:8081"
     depends_on:
+      - opensandbox-server
       - aspire-dashboard
     restart: unless-stopped
 

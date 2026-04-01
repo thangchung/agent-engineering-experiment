@@ -17,4 +17,5 @@ internal static class SandboxCodeGuard
         code.Contains("search(", StringComparison.Ordinal) ||
         code.Contains("get_schema(", StringComparison.Ordinal) ||
         code.Contains("await call_tool(", StringComparison.Ordinal);
+
 }
