@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using McpServer.Registry;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 
 namespace McpServer.Cli;
 
@@ -11,7 +11,7 @@ namespace McpServer.Cli;
 internal static partial class IntentInvocationPlanner
 {
     private static readonly string[] LocationParameterHints = ["city", "location", "place", "area", "region", "state", "country", "town"];
-    private static readonly string[] SearchParameterHints = ["query", "search", "term", "text", "name", "keyword", "phrase"];
+    private static readonly string[] SearchParameterHints = ["query", "Search", "term", "text", "name", "keyword", "phrase"];
 
     public static PlannedInvocation Plan(string intent, string? explicitToolName, string? explicitArgsJson, IReadOnlyList<ToolDefinition> candidates)
     {

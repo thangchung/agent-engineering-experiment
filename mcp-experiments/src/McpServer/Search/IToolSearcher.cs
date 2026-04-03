@@ -3,7 +3,7 @@ using McpServer.Registry;
 namespace McpServer.Search;
 
 /// <summary>
-/// Defines tool search and ranking behavior.
+/// Defines tool Search and ranking behavior.
 /// </summary>
 public interface IToolSearcher
 {

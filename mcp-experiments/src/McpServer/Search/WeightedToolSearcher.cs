@@ -27,7 +27,7 @@ public sealed class WeightedToolSearcher : IToolSearcher
     private readonly Dictionary<string, ToolSearchEntry> _searchIndex;
 
     /// <summary>
-    /// Initializes the searcher and builds the pre-computed search index for all tools.
+    /// Initializes the searcher and builds the pre-computed Search index for all tools.
     /// </summary>
     public WeightedToolSearcher(IToolRegistry registry)
     {
@@ -83,7 +83,7 @@ public sealed class WeightedToolSearcher : IToolSearcher
     }
 
     /// <summary>
-    /// Computes a deterministic score for one pre-built search entry using O(1) HashSet lookups.
+    /// Computes a deterministic score for one pre-built Search entry using O(1) HashSet lookups.
     /// </summary>
     private static int Score(ToolSearchEntry entry, string normalizedQuery, string[] queryTokens)
     {
@@ -146,7 +146,7 @@ public sealed class WeightedToolSearcher : IToolSearcher
     private sealed record RankedTool(ToolDescriptor Tool, int Score, int Index);
 
     /// <summary>
-    /// Per-tool search data pre-computed at construction time to avoid redundant work per query.
+    /// Per-tool Search data pre-computed at construction time to avoid redundant work per query.
     /// </summary>
     private sealed record ToolSearchEntry(
         ToolDescriptor Tool,

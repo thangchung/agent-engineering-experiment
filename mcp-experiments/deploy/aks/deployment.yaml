@@ -1,3 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-config
+  namespace: mcp-experiments
+data:
+  config.toml: |
+    [server]
+    host = "0.0.0.0"
+    port = 8080
+    log_level = "INFO"
+
+    [runtime]
+    type = "docker"
+    execd_image = "opensandbox/execd:v1.0.7"
+
+    [docker]
+    network_mode = "bridge"
+    no_new_privileges = true
+    pids_limit = 4096
+
+    [ingress]
+    mode = "direct"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensandbox-server
+  namespace: mcp-experiments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensandbox-server
+  template:
+    metadata:
+      labels:
+        app: opensandbox-server
+    spec:
+      containers:
+        - name: opensandbox-server
+          image: docker.io/opensandbox/server:v0.1.8
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: OPEN_SANDBOX_API_KEY
+              value: ""
+            - name: OTEL_SERVICE_NAME
+              value: opensandbox-server
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://aspire-dashboard:18889
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: opensandbox-config
+              mountPath: /etc/opensandbox/config.toml
+              subPath: config.toml
+              readOnly: true
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: opensandbox-config
+          configMap:
+            name: opensandbox-config
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,8 +95,8 @@ spec:
           image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS
-              value: "true"
+            - name: Dashboard__Frontend__AuthMode
+              value: Unsecured
           ports:
             - name: ui
               containerPort: 18888
@@ -60,6 +137,22 @@ spec:
                 secretKeyRef:
                   name: copilot-secret
                   key: github-token
+            - name: CodeMode__Runner
+              value: opensandbox
+            - name: CodeMode__TimeoutMs
+              value: "90000"
+            - name: Copilot__SendTimeoutSeconds
+              value: "120"
+            - name: OpenSandbox__Domain
+              value: opensandbox-server:8080
+            - name: OpenSandbox__Image
+              value: python:3.12-slim
+            - name: OpenSandbox__ReadyTimeoutSeconds
+              value: "60"
+            - name: OpenSandbox__RequestTimeoutSeconds
+              value: "30"
+            - name: OpenSandbox__ApiKey
+              value: ""
             - name: OTEL_SERVICE_NAME
               value: mcp-server
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -107,7 +200,7 @@ spec:
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: grpc
           ports:
-            - containerPort: 8080
+            - containerPort: 8082
           volumeMounts:
             - name: testweb-data-protection
               mountPath: /var/app/data-protection-keys

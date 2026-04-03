@@ -1,5 +1,5 @@
 using McpServer.Cli;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 
 namespace McpServer.UnitTests.Cli;
 

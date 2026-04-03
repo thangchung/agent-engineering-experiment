@@ -110,7 +110,8 @@ public sealed class CopilotChatApiClient(HttpClient httpClient, IConfiguration c
         int PromptTokens,
         int CompletionTokens,
         int TotalTokens,
-        long ElapsedMilliseconds);
+        long ElapsedMilliseconds,
+        JsonElement? ExecuteToolResult = null);
 
     private sealed record ChatPromptRequest(string Prompt);
 }

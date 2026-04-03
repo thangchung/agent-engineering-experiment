@@ -6,6 +6,6 @@ namespace McpServer.CodeMode;
 public sealed record RunnerResult(object? FinalValue, int CallsExecuted);
 
 /// <summary>
-/// Final execute response returned to the caller.
+/// Final Execute response returned to the caller.
 /// </summary>
 public sealed record ExecuteResponse(object? FinalValue);

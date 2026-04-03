@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using McpServer.Registry;
 using McpServer.CodeMode;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 using Microsoft.AspNetCore.Mvc;
 using ModelContextProtocol.Server;
 using Spectre.Console;
@@ -78,7 +78,7 @@ internal static class BootstrapConsoleReporter
 
         string pureToolSearchPayload = BuildPromptSurfacePayload(
             exposedHandlers
-                .Where(method => method.Name is nameof(ToolSearchHandlers.search_tools) or nameof(ToolSearchHandlers.call_tool))
+                .Where(method => method.Name is nameof(ToolSearchHandlers.SearchTools) or nameof(ToolSearchHandlers.CallTool))
                 .Select(method =>
                     (
                         method.Name,
@@ -106,12 +106,12 @@ internal static class BootstrapConsoleReporter
 
         table.AddRow("traditional-mcp", traditionalToolCount.ToString(), traditionalTokens.ToString(), "baseline");
         table.AddRow(
-            "tool-search+code-mode",
+            "tool-Search+code-mode",
             currentToolCount.ToString(),
             currentTokens.ToString(),
             $"{currentReductionTokens} tok ({currentReductionPercentage:F1}%)");
         table.AddRow(
-            "pure-tool-search",
+            "pure-tool-Search",
             pureToolSearchCount.ToString(),
             pureToolSearchTokens.ToString(),
             $"{pureToolSearchReductionTokens} tok ({pureToolSearchReductionPercentage:F1}%)");

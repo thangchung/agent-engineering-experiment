@@ -1,0 +1,99 @@
+@using System.Text.Json
+@using TestWeb.Components.Pages
+
+@if (Value.ValueKind is JsonValueKind.Object)
+{
+    <div class="structured-object @(Depth == 0 ? "structured-root" : null)">
+        @foreach (JsonProperty property in Value.EnumerateObject())
+        {
+            <section class="structured-section">
+                <div class="structured-label">@StructuredJsonFormatter.FormatLabel(property.Name)</div>
+                @RenderNode(property.Value)
+            </section>
+        }
+    </div>
+}
+else
+{
+    @RenderNode(Value)
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public JsonElement Value { get; set; }
+
+    [Parameter]
+    public int Depth { get; set; }
+
+    private RenderFragment RenderNode(JsonElement value) => builder =>
+    {
+        if (StructuredJsonFormatter.TryCreateTable(value, out StructuredJsonTable table))
+        {
+            builder.OpenElement(0, "table");
+            builder.OpenElement(1, "thead");
+            builder.OpenElement(2, "tr");
+            for (int index = 0; index < table.Columns.Count; index++)
+            {
+                builder.OpenElement(3, "th");
+                builder.AddContent(4, StructuredJsonFormatter.FormatLabel(table.Columns[index]));
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+            builder.CloseElement();
+
+            builder.OpenElement(5, "tbody");
+            for (int rowIndex = 0; rowIndex < table.Rows.Count; rowIndex++)
+            {
+                builder.OpenElement(6, "tr");
+                for (int columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
+                {
+                    builder.OpenElement(7, "td");
+                    builder.AddContent(8, table.Rows[rowIndex][columnIndex]);
+                    builder.CloseElement();
+                }
+
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+            builder.CloseElement();
+            return;
+        }
+
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                builder.OpenComponent<StructuredJsonView>(10);
+                builder.AddAttribute(11, nameof(Value), value);
+                builder.AddAttribute(12, nameof(Depth), Depth + 1);
+                builder.CloseComponent();
+                break;
+
+            case JsonValueKind.Array:
+                builder.OpenElement(13, "ol");
+                builder.AddAttribute(14, "class", "structured-list");
+                int itemIndex = 0;
+                foreach (JsonElement item in value.EnumerateArray())
+                {
+                    builder.OpenElement(15 + itemIndex, "li");
+                    builder.OpenComponent<StructuredJsonView>(1000 + itemIndex);
+                    builder.AddAttribute(1001 + itemIndex, nameof(Value), item);
+                    builder.AddAttribute(1002 + itemIndex, nameof(Depth), Depth + 1);
+                    builder.CloseComponent();
+                    builder.CloseElement();
+                    itemIndex++;
+                }
+
+                builder.CloseElement();
+                break;
+
+            default:
+                builder.OpenElement(2000, "div");
+                builder.AddAttribute(2001, "class", "structured-scalar");
+                builder.AddContent(2002, StructuredJsonFormatter.FormatScalar(value));
+                builder.CloseElement();
+                break;
+        }
+    };
+}

@@ -3,26 +3,24 @@ using System.ComponentModel;
 using System.Text.Json;
 using McpServer.Registry;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 
 namespace McpServer.CodeMode;
 
 /// <summary>
-/// Code-mode MCP handlers: <c>search</c>, <c>get_schema</c>, <c>get_execute_syntax</c>, and <c>execute</c>.
-/// These form the staged discovery → schema → execute workflow for LLM-driven code execution.
+/// Code-mode MCP handlers: <c>Search</c>, <c>GetSchema</c>, <c>get_execute_syntax</c>, and <c>Execute</c>.
+/// These form the staged discovery → schema → Execute workflow for LLM-driven code execution.
 /// </summary>
 [McpServerToolType]
 public static class CodeModeHandlers
 {
     /// <summary>
     /// Staged discovery: returns a brief list of tools matching the query for code-mode
-    /// planning. Follow up with <c>get_schema</c> to retrieve full parameter schemas.
+    /// planning. Follow up with <c>GetSchema</c> to retrieve full parameter schemas.
     /// </summary>
-    [McpServerTool, Description("Discover tools by query with optional detail, tag filter, and limit. Use before get_schema and execute in a multi-step code-mode workflow.")]
-    public static DiscoverySearchResponse search(
+    [McpServerTool(Name = "search"), Description("Discover tools by query with optional detail, tag filter, and limit. Use before GetSchema and Execute in a multi-step code-mode workflow.")]
+    public static DiscoverySearchResponse Search(
         [FromServices] DiscoveryTools discoveryTools,
-        [FromServices] CodeModeWorkflowGuard workflowGuard,
         [FromServices] UserContext context,
         [FromServices] ILoggerFactory loggerFactory,
         [Description("Search query for tool discovery")] string query,
@@ -30,12 +28,10 @@ public static class CodeModeHandlers
         [Description("Optional tag filters. When omitted, all tags are included.")] IReadOnlyList<string>? tags = null,
         [Description("Optional maximum results. Defaults to server discovery default.")] int? limit = null)
     {
-        workflowGuard.MarkSearch();
-
         SchemaDetailLevel resolvedDetail = detail.HasValue ? ParseSchemaDetailLevel(detail.Value, SchemaDetailLevel.Brief) : SchemaDetailLevel.Brief;
         DiscoverySearchResponse response = discoveryTools.Search(query, context, resolvedDetail, tags, limit);
 
-        Activity.Current?.SetTag("mcp.handler.name", nameof(search));
+        Activity.Current?.SetTag("mcp.handler.name", nameof(Search));
         Activity.Current?.SetTag("mcp.handler.results.count", response.Results.Count);
         Activity.Current?.SetTag("mcp.handler.results.totalMatched", response.TotalMatched);
         Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", response.Results.Select(static r => r.Name)));
@@ -43,7 +39,7 @@ public static class CodeModeHandlers
         ILogger logger = loggerFactory.CreateLogger(typeof(CodeModeHandlers));
         logger.LogInformation(
             "[codemode] {HandlerName} returned {ResultCount} tools out of {TotalMatched} matches for query {Query}: {ToolNames}.",
-            nameof(search),
+            nameof(Search),
             response.Results.Count,
             response.TotalMatched,
             query,
@@ -55,31 +51,37 @@ public static class CodeModeHandlers
     /// <summary>
     /// Returns input schemas for a set of tool names with optional detail and missing-name reporting.
     /// </summary>
-    [McpServerTool, Description("Retrieve input schemas for tool names. Pass a list via toolNames or a single name via name. Default detail is Detailed markdown, and missing tool names are reported.")]
-    public static SchemaLookupResponse get_schema(
+    [McpServerTool(Name = "get_schema"),
+     Description(
+         "Retrieve input schemas for tool names. Pass a list via toolNames or a single name via name. Default detail is Detailed markdown, and missing tool names are reported.")]
+    public static SchemaLookupResponse GetSchema(
         [FromServices] DiscoveryTools discoveryTools,
-        [FromServices] CodeModeWorkflowGuard workflowGuard,
         [FromServices] UserContext context,
         [FromServices] ILoggerFactory loggerFactory,
-        [Description("List of tool names to retrieve schemas for")] IReadOnlyList<string>? toolNames = null,
-        [Description("Single tool name shorthand - equivalent to toolNames with one entry")] string? name = null,
-        [Description("Schema verbosity: Brief name-only, Detailed compact markdown, Full full JSON schema. Also accepts 0, 1, or 2.")] JsonElement? detail = null)
+        [Description("List of tool names to retrieve schemas for")]
+        IReadOnlyList<string>? toolNames = null,
+        [Description("Single tool name shorthand - equivalent to toolNames with one entry")]
+        string? name = null,
+        [Description(
+            "Schema verbosity: Brief name-only, Detailed compact markdown, Full full JSON schema. Also accepts 0, 1, or 2.")]
+        JsonElement? detail = null)
     {
-        workflowGuard.MarkSchema();
-
         IReadOnlyList<string> requestedToolNames = ResolveSchemaToolNames(toolNames, name);
-        SchemaDetailLevel resolvedDetail = detail.HasValue ? ParseSchemaDetailLevel(detail.Value, SchemaDetailLevel.Detailed) : SchemaDetailLevel.Detailed;
+        SchemaDetailLevel resolvedDetail = detail.HasValue
+            ? ParseSchemaDetailLevel(detail.Value, SchemaDetailLevel.Detailed)
+            : SchemaDetailLevel.Detailed;
         SchemaLookupResponse response = discoveryTools.GetSchema(requestedToolNames, context, resolvedDetail);
 
-        Activity.Current?.SetTag("mcp.handler.name", nameof(get_schema));
+        Activity.Current?.SetTag("mcp.handler.name", nameof(GetSchema));
         Activity.Current?.SetTag("mcp.handler.results.count", response.Results.Count);
-        Activity.Current?.SetTag("mcp.handler.results.toolNames", string.Join(", ", response.Results.Select(static s => s.Name)));
+        Activity.Current?.SetTag("mcp.handler.results.toolNames",
+            string.Join(", ", response.Results.Select(static s => s.Name)));
         Activity.Current?.SetTag("mcp.handler.results.missingCount", response.Missing.Count);
 
         ILogger logger = loggerFactory.CreateLogger(typeof(CodeModeHandlers));
         logger.LogInformation(
             "[codemode] {HandlerName} returned {SchemaCount} schemas for tools {ToolNames}. Detail: {Detail}. Missing: {MissingTools}.",
-            nameof(get_schema),
+            nameof(GetSchema),
             response.Results.Count,
             response.Results.Select(static s => s.Name),
             resolvedDetail,
@@ -90,10 +92,10 @@ public static class CodeModeHandlers
 
     /// <summary>
     /// Returns the exact code syntax guide for the <c>execute</c> tool based on the active runner.
-    /// Call this BEFORE writing code for <c>execute</c> to learn the required language and conventions.
+    /// Call this before writing code for <c>execute</c> to learn required language and conventions.
     /// </summary>
-    [McpServerTool, Description("Returns the code syntax guide for the execute tool. Call this first to learn whether to write DSL or Python code before calling execute.")]
-    public static string get_execute_syntax([FromServices] ISandboxRunner runner)
+    [McpServerTool(Name = "get_execute_syntax"), Description("Returns the code syntax guide for execute. Call this first to confirm runner expectations before writing code.")]
+    public static string GetExecuteSyntax([FromServices] ISandboxRunner runner)
     {
         return runner.SyntaxGuide;
     }
@@ -102,24 +104,21 @@ public static class CodeModeHandlers
     /// Executes constrained code and returns only the final value.
     /// The required code syntax depends on the configured runner - call <c>get_execute_syntax</c> first.
     /// </summary>
-    [McpServerTool, Description("""
+    [McpServerTool(Name = "execute"), Description("""
         Execute constrained code and return the final result.
-        IMPORTANT: call search, then get_schema, then get_execute_syntax before execute.
+        IMPORTANT: call Search, then GetSchema, then get_execute_syntax before Execute.
         The runner will reject code written in the wrong style with an error message.
         """)]
-    public static async Task<object?> execute(
+    public static async Task<object?> Execute(
         [Description("Code string written in the syntax returned by get_execute_syntax.")] string code,
         [FromServices] ExecuteTool executeTool,
-        [FromServices] CodeModeWorkflowGuard workflowGuard,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        workflowGuard.EnsureReadyForExecuteAndReset();
-
         ILogger logger = loggerFactory.CreateLogger(typeof(CodeModeHandlers));
         logger.LogInformation(
             "[codemode] {HandlerName} executing code ({CodeLength} chars).",
-            nameof(execute),
+            nameof(Execute),
             code.Length);
 
         try
@@ -128,7 +127,7 @@ public static class CodeModeHandlers
 
             logger.LogInformation(
                 "[codemode] {HandlerName} completed successfully. HasResult: {HasResult}.",
-                nameof(execute),
+                nameof(Execute),
                 response.FinalValue is not null);
 
             return response.FinalValue;
@@ -138,16 +137,16 @@ public static class CodeModeHandlers
             logger.LogWarning(
                 ex,
                 "[codemode] {HandlerName} failed: {Error}.",
-                nameof(execute),
+                nameof(Execute),
                 ex.Message);
 
             // Return execution errors as content so the LLM reports them to the user
             // instead of interpreting an MCP error as "tool broken, try fallback".
-            return $"[execute error] {ex.Message}";
+            return $"[Execute error] {ex.Message}";
         }
     }
 
-    internal static SchemaDetailLevel ParseSchemaDetailLevel(JsonElement detail, SchemaDetailLevel defaultValue)
+    private static SchemaDetailLevel ParseSchemaDetailLevel(JsonElement detail, SchemaDetailLevel defaultValue)
     {
         return detail.ValueKind switch
         {
@@ -189,7 +188,7 @@ public static class CodeModeHandlers
         };
     }
 
-    internal static IReadOnlyList<string> ResolveSchemaToolNames(
+    private static IReadOnlyList<string> ResolveSchemaToolNames(
         IReadOnlyList<string>? toolNames,
         string? name)
     {

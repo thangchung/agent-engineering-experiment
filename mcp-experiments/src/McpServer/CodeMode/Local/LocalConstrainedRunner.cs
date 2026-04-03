@@ -68,8 +68,8 @@ public sealed class LocalConstrainedRunner : ISandboxRunner
         If `result` is not set, captured stdout is returned when available.
         {{baseUrlSection}}
         {{allowedSection}}
-        Code mode is isolated from tool-search tools.
-        Do NOT use: search_tools, call_tool, search, get_schema, or execute in this code.
+        Code mode is isolated from tool-Search tools.
+        Do NOT use: SearchTools, CallTool, Search, GetSchema, or Execute in this code.
         Example:
             import requests
             response = requests.get(f"{BASE_URL}/pet/findByStatus", params={"status": "sold"}, timeout=10)
@@ -95,15 +95,15 @@ public sealed class LocalConstrainedRunner : ISandboxRunner
         using Activity? activity = ActivitySource.StartActivity("codemode.run", ActivityKind.Internal);
         activity?.SetTag("mcp.code", code);
         activity?.SetTag("mcp.code.length", code.Length);
-        activity?.SetTag("mcp.execute.timeout.ms", timeout.TotalMilliseconds);
-        activity?.SetTag("mcp.execute.maxToolCalls", maxToolCalls);
+        activity?.SetTag("mcp.Execute.timeout.ms", timeout.TotalMilliseconds);
+        activity?.SetTag("mcp.Execute.maxToolCalls", maxToolCalls);
 
         if (SandboxCodeGuard.ContainsForbiddenMetaToolUsage(code))
         {
             throw new InvalidOperationException(
-                "Code mode is isolated from tool-search tools. " +
-                "Do not call search_tools, call_tool, search, get_schema, or execute inside code mode; use pure Python compute only. " +
-                "If you need an MCP tool, call it outside execute. If you stay in execute, rewrite the task as direct Python logic or HTTP requests with the requests-compatible shim.");
+                "Code mode is isolated from tool-Search tools. " +
+                "Do not call SearchTools, CallTool, Search, GetSchema, or Execute inside code mode; use pure Python compute only. " +
+                "If you need an MCP tool, call it outside Execute. If you stay in Execute, rewrite the task as direct Python logic or HTTP requests with the requests-compatible shim.");
         }
 
         if (ContainsForbiddenHardcodedApiUsage(code))
@@ -114,15 +114,15 @@ public sealed class LocalConstrainedRunner : ISandboxRunner
         }
 
         logger.LogInformation(
-            "Generated Python code for local constrained execute:\n{Code}",
+            "Generated Python code for local constrained Execute:\n{Code}",
             code);
 
         using CancellationTokenSource timeoutCts = new(timeout);
         using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         object? finalValue = await ExecutePythonLocallyAsync(code, linkedCts.Token);
-        activity?.SetTag("mcp.execute.callCount", 0);
-        activity?.SetTag("mcp.execute.hasFinalValue", finalValue is not null);
+        activity?.SetTag("mcp.Execute.callCount", 0);
+        activity?.SetTag("mcp.Execute.hasFinalValue", finalValue is not null);
         return new RunnerResult(finalValue, 0);
     }
 

@@ -2,6 +2,7 @@
 @page "/chat"
 @inject TestWeb.Services.CopilotChatApiClient ChatService
 @using Markdig
+@using System.Text.Json
 
 <PageTitle>Copilot Chat</PageTitle>
 
@@ -11,16 +12,21 @@
 <div class="chat-samples mb-3">
     <div class="fw-semibold mb-2">Sample prompts</div>
     <ul class="mb-0">
-        <li><strong>Discovery:</strong> what tools are available?</li>
-        <li><strong>Search:</strong> show me tools for brewery filtering by city</li>
-        <li><strong>Schema (Concise):</strong> show concise parameter schema for getSingleBrewery and listBreweries</li>
-        <li><strong>Schema (Full):</strong> show full json schema for brewery_random</li>
-        <li><strong>Single Call:</strong> get random brewery</li>
-        <li><strong>Multi-step:</strong> find breweries in San Diego and return only their names and types</li>
-        <li><strong>Aggregation:</strong> how many breweries are there across all pages</li>
-        <li><strong>Filtering:</strong> find breweries with 'moon' in the name, return top 5 as name and city</li>
-        <li><strong>Error Handling:</strong> try calling getSingleBrewery with an invalid ID and explain the error</li>
-        <li><strong>Summary:</strong> summarize all successful brewery queries and list the tools used with token counts</li>
+        <li><strong>Discovery:</strong> what tools are available? <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "what tools are available?"'>Use</button></li>
+        <li><strong>Search:</strong> show me tools for brewery filtering by city <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "show me tools for brewery filtering by city"'>Use</button></li>
+        <li><strong>Schema (Concise):</strong> show concise parameter schema for getSingleBrewery and listBreweries <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "show concise parameter schema for getSingleBrewery and listBreweries"'>Use</button></li>
+        <li><strong>Schema (Full):</strong> show full json schema for brewery_random <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "show full json schema for brewery_random"'>Use</button></li>
+        <li><strong>Single Call:</strong> get random brewery <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "get random brewery"'>Use</button></li>
+        <li><strong>Multi-step:</strong> find breweries in San Diego and return only their names and types <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "find breweries in San Diego and return only their names and types"'>Use</button></li>
+        <li><strong>Aggregation:</strong> how many breweries are there across all pages <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "how many breweries are there across all pages"'>Use</button></li>
+        <li><strong>Filtering:</strong> find breweries with 'moon' in the name, return top 5 as name and city <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "find breweries with moon in the name, return top 5 as name and city"'>Use</button></li>
+        <li><strong>Error Handling:</strong> try calling getSingleBrewery with an invalid ID and explain the error <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "try calling getSingleBrewery with an invalid ID and explain the error"'>Use</button></li>
+        <li><strong>Summary:</strong> summarize all successful brewery queries and list the tools used with token counts <button class="btn btn-sm btn-outline-secondary ms-1" @onclick='() => promptText = "summarize all successful brewery queries and list the tools used with token counts"'>Use</button></li>
+        <li>
+            <strong>Complex code mode:</strong>
+            <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => promptText = ComplexCodeModePrompt">Use</button>
+            <pre class="sample-pre">@ComplexCodeModePrompt</pre>
+        </li>
     </ul>
 </div>
 
@@ -46,7 +52,16 @@
                     }
                     @if (line.Role == "assistant")
                     {
-                        <div class="chat-content markdown-content">@((MarkupString)RenderMarkdown(line.Content))</div>
+                        @if (line.ExecuteToolResult is JsonElement executeToolResult)
+                        {
+                            <div class="chat-content chat-structured">
+                                <StructuredJsonView Value="executeToolResult" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="chat-content markdown-content">@((MarkupString)RenderMarkdown(line.Content))</div>
+                        }
                     }
                     else
                     {
@@ -62,7 +77,19 @@
                   rows="4"
                   placeholder="Type your prompt here..."
                   @bind="promptText"></textarea>
-        <button class="btn btn-primary" @onclick="SendAsync" disabled="@isSending">@(isSending ? "Sending..." : "Send")</button>
+        <button class="btn btn-primary send-button" @onclick="SendAsync" disabled="@isSending">
+            @if (isSending)
+            {
+                <span class="sending-state" aria-live="polite">
+                    <span class="sending-spinner" aria-hidden="true"></span>
+                    <span class="sending-text">Sending<span class="sending-dots"></span></span>
+                </span>
+            }
+            else
+            {
+                <span>Send</span>
+            }
+        </button>
     </div>
 </div>
 
@@ -105,7 +132,8 @@
                 "assistant",
                 "Assistant",
                 turn.Content,
-                new TurnMetrics(turn.PromptTokens, turn.CompletionTokens, turn.TotalTokens, turn.ElapsedMilliseconds)));
+                new TurnMetrics(turn.PromptTokens, turn.CompletionTokens, turn.TotalTokens, turn.ElapsedMilliseconds),
+                turn.ExecuteToolResult));
             statusText = $"Last turn: prompt {turn.PromptTokens} tok, completion {turn.CompletionTokens} tok, total {turn.TotalTokens} tok, {turn.ElapsedMilliseconds} ms.";
         }
         catch (Exception ex)
@@ -134,5 +162,33 @@
 
     private sealed record TurnMetrics(int PromptTokens, int CompletionTokens, int TotalTokens, long ElapsedMilliseconds);
 
-    private sealed record ChatLine(string Role, string RoleLabel, string Content, TurnMetrics? Metrics = null);
+    private sealed record ChatLine(string Role, string RoleLabel, string Content, TurnMetrics? Metrics = null, JsonElement? ExecuteToolResult = null);
+
+    private const string ComplexCodeModePrompt =
+        """
+        Write Python code for execute mode.
+
+        Requirements:
+        1) Get breweries in San Diego.
+        2) Return the total number of breweries found for San Diego.
+        3) Search for breweries matching "moon" and return top 5 with only:
+           - name
+           - city
+        4) Also compute a San Diego summary:
+           - count by brewery_type
+           - top 3 cities by number of breweries (if city is missing, use "Unknown")
+        5) Deduplicate breweries by id before counting.
+        6) Sort outputs deterministically:
+           - type summary: count desc, then type asc
+           - top cities: count desc, then city asc
+           - moon top 5: name asc
+        7) Return one JSON object in `result` with this exact shape:
+        {
+          "san_diego_total": number,
+          "san_diego_type_summary": [{"brewery_type": string, "count": number}],
+          "san_diego_top_cities": [{"city": string, "count": number}],
+          "moon_top_5": [{"name": string, "city": string}]
+        }
+        8) If any tool call fails, set a top-level "errors" array with readable messages but still return partial data.
+        """;
 }

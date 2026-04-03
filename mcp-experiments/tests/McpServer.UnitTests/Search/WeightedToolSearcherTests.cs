@@ -11,7 +11,7 @@ public sealed class WeightedToolSearcherTests
         ToolRegistry registry = new(
         [
             TestTools.Create("brewery_search", "Generic lookup", "{}"),
-            TestTools.Create("lookup", "Can brewery search by city", "{}"),
+            TestTools.Create("lookup", "Can brewery Search by city", "{}"),
         ]);
 
         WeightedToolSearcher searcher = new(registry);

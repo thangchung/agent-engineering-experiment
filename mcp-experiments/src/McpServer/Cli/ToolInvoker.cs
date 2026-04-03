@@ -1,6 +1,6 @@
 using System.Text.Json;
 using McpServer.Registry;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 
 namespace McpServer.Cli;
 

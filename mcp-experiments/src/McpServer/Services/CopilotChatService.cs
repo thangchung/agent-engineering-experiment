@@ -1,6 +1,7 @@
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace McpServer.Services;
 
@@ -34,7 +35,7 @@ Tools are derived from OpenAPI operation IDs (e.g. `getPetById`, `listBreweries`
 User asks what tools exist or what the API can do.
 → Call `search` with a broad query or list all tools with one-line summaries.
 
-### 2 — Focused search
+### 2 — Focused Search
 User mentions a domain, resource, or action keyword.
 → Call `search` with that keyword and return the matching tool names and brief descriptions.
 
@@ -62,34 +63,43 @@ User asks for totals, counts, or pagination metadata.
 
 ### 8 — Code mode (pure Python compute)
 Use `execute` only when the task genuinely requires Python logic (e.g. sorting, filtering, math across many results) that cannot be done with a single tool call.
+If the user explicitly asks for code mode (for example "use code mode" or "use execute mode"), you must follow the full code mode workflow and return the execute output.
 Strict order is mandatory: `search` -> `get_schema` -> `get_execute_syntax` -> `execute`.
 Do not skip `get_schema` even if `search(detail="Full")` appears sufficient.
 Steps:
     a. Call `search` to discover candidate tools.
     b. Call `get_schema` for the chosen tool names.
     c. Call `get_execute_syntax` to confirm runner capabilities.
-    d. For OpenSandbox runner, generate Python that can fetch required API data directly inside execute code (for example via `requests.get(..., timeout=10)`) when appropriate.
-    e. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside execute code.
-    f. Do not generate JavaScript or TypeScript for execute.
+    d. For OpenSandbox runner, generate Python that can fetch required API data directly inside Execute code (for example via `requests.get(..., timeout=10)`) when appropriate.
+    e. Do not call `search`, `get_schema`, `call_tool`, or `execute` from inside Execute code.
+    f. Do not generate JavaScript or TypeScript for Execute.
 **Critical:** Once `execute` returns a result (success or failure), your turn is DONE.
 - On success: present the execute result to the user. Do NOT call `call_tool`, `search_tools`, or any other tool after this point.
-- On failure: report the error directly to the user. Do NOT fall back to tool-search-tool or any other approach.
+- On failure: report the error directly to the user. Do NOT fall back to tool-Search-tool or any other approach.
 
 ### 9 — Missing or ambiguous tool
 User refers to a tool or endpoint that cannot be found.
 → Do not hallucinate a tool name or parameters.
-→ Report that the tool was not found and suggest the closest matches from `search`.
+→ Report that the tool was not found and suggest the closest matches from `Search`.
 
 
 ## Error handling
-- **No fallback between workflows**: Code mode and tool-search-tool are separate workflows. Never mix them in a single turn. If one workflow produces a result (success or failure), do not invoke the other.
+- **No fallback between workflows**: Code mode and tool-Search-tool are separate workflows. Never mix them in a single turn. If one workflow produces a result (success or failure), do not invoke the other.
 - **Direct error reporting**: Present the error message as-is; do not wrap, reframe, or suggest workarounds unless explicitly helpful.
 - **Tool-search failures**: If `search` fails, report it directly. Do not attempt alternative discovery methods.
 ## Output rules
 - Never expose internal reasoning or chain-of-thought.
 - Use bullet lists for tool name enumerations.
 - Use compact key-value format (`field: value`) for single-record results.
-- Use short prose for multi-record summaries.
+- For multi-record results with columns, use proper multi-line markdown pipe tables with each row on its own line:
+  ```
+  | col1 | col2 |
+  |------|------|
+  | val1 | val2 |
+  | val3 | val4 |
+  ```
+  Never put the entire table on a single line.
+- Use short prose for summaries that don't need tabular format.
 - Omit fields the user did not ask for unless they are essential for context.
 """;
 
@@ -148,7 +158,7 @@ User refers to a tool or endpoint that cannot be found.
             attemptCount++;
             totalPromptTokens += promptTokensPerAttempt;
 
-            var response = await SendWithHardTimeoutAsync(prompt, cancellationToken);
+            (AssistantMessageEvent? response, JsonElement? executeToolResult) = await SendAttemptAsync(prompt, cancellationToken);
 
             string content = response?.Data?.Content ?? "(no response)";
             int completionTokens = CountTokens(content);
@@ -167,7 +177,8 @@ User refers to a tool or endpoint that cannot be found.
                 totalPromptTokens,
                 totalCompletionTokens,
                 totalPromptTokens + totalCompletionTokens,
-                stopwatch.ElapsedMilliseconds);
+                stopwatch.ElapsedMilliseconds,
+                executeToolResult);
         }
         catch (Exception ex) when (IsSessionNotFoundException(ex))
         {
@@ -197,7 +208,7 @@ User refers to a tool or endpoint that cannot be found.
 
             try
             {
-                var retryResponse = await SendWithHardTimeoutAsync(prompt, cancellationToken);
+                (AssistantMessageEvent? retryResponse, JsonElement? retryExecuteToolResult) = await SendAttemptAsync(prompt, cancellationToken);
 
                 string retryContent = retryResponse?.Data?.Content ?? "(no response)";
                 int retryCompletionTokens = CountTokens(retryContent);
@@ -213,7 +224,8 @@ User refers to a tool or endpoint that cannot be found.
                     totalPromptTokens,
                     totalCompletionTokens,
                     totalPromptTokens + totalCompletionTokens,
-                    stopwatch.ElapsedMilliseconds);
+                    stopwatch.ElapsedMilliseconds,
+                    retryExecuteToolResult);
             }
             catch (Exception retryEx) when (IsSessionNotFoundException(retryEx))
             {
@@ -357,6 +369,15 @@ User refers to a tool or endpoint that cannot be found.
         }
     }
 
+    private async Task<(AssistantMessageEvent? Response, JsonElement? ExecuteToolResult)> SendAttemptAsync(string prompt, CancellationToken cancellationToken)
+    {
+        ExecuteToolResultObserver observer = new();
+        using IDisposable subscription = session!.On(observer.Observe);
+
+        AssistantMessageEvent? response = await SendWithHardTimeoutAsync(prompt, cancellationToken);
+        return (response, observer.GetExecuteToolResult());
+    }
+
     private static void ValidateConfiguredToken(string? token)
     {
         if (string.IsNullOrWhiteSpace(token))
@@ -421,7 +442,80 @@ User refers to a tool or endpoint that cannot be found.
         int PromptTokens,
         int CompletionTokens,
         int TotalTokens,
-        long ElapsedMilliseconds);
+        long ElapsedMilliseconds,
+        JsonElement? ExecuteToolResult = null);
+}
+
+internal sealed class ExecuteToolResultObserver
+{
+    private readonly Dictionary<string, string> toolNamesByCallId = new(StringComparer.Ordinal);
+    private JsonElement? executeToolResult;
+
+    public void Observe(object evt)
+    {
+        switch (evt)
+        {
+            case ToolExecutionStartEvent toolStart:
+                RecordStart(toolStart);
+                break;
+            case ToolExecutionCompleteEvent toolComplete:
+                RecordCompletion(toolComplete);
+                break;
+        }
+    }
+
+    public JsonElement? GetExecuteToolResult()
+    {
+        return executeToolResult;
+    }
+
+    private void RecordStart(ToolExecutionStartEvent toolStart)
+    {
+        string? toolCallId = toolStart.Data.ToolCallId;
+        if (string.IsNullOrWhiteSpace(toolCallId))
+        {
+            return;
+        }
+
+        string toolName = toolStart.Data.McpToolName ?? toolStart.Data.ToolName ?? string.Empty;
+        toolNamesByCallId[toolCallId] = toolName;
+    }
+
+    private void RecordCompletion(ToolExecutionCompleteEvent toolComplete)
+    {
+        string? toolCallId = toolComplete.Data.ToolCallId;
+        if (string.IsNullOrWhiteSpace(toolCallId)
+            || !toolNamesByCallId.TryGetValue(toolCallId, out string? toolName)
+            || !IsExecuteToolName(toolName))
+        {
+            return;
+        }
+
+        if (!toolComplete.Data.Success)
+        {
+            return;
+        }
+
+        string? resultText = toolComplete.Data.Result?.DetailedContent ?? toolComplete.Data.Result?.Content;
+        if (ExecuteToolResultExtractor.TryExtractJsonObject(resultText, out JsonElement result))
+        {
+            executeToolResult = result;
+        }
+    }
+
+    private static bool IsExecuteToolName(string toolName)
+    {
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return false;
+        }
+
+        string normalized = toolName.Trim();
+        return string.Equals(normalized, "Execute", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("__execute", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".Execute", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("/Execute", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>

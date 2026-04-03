@@ -12,12 +12,10 @@ public sealed class CodeModeHandlerTests
     {
         ToolRegistry registry = new([TestTools.Create("brewery_search", "Find breweries", "{\"type\":\"object\"}")]);
         DiscoveryTools discoveryTools = new(registry, new WeightedToolSearcher(registry));
-        CodeModeWorkflowGuard workflowGuard = new();
 
         // Deduplication: passing the same name via both toolNames and name must return one result.
-        SchemaLookupResponse response = CodeModeHandlers.get_schema(
+        SchemaLookupResponse response = CodeModeHandlers.GetSchema(
             discoveryTools,
-            workflowGuard,
             new UserContext(),
             NullLoggerFactory.Instance,
             toolNames: ["brewery_search"],
@@ -34,12 +32,10 @@ public sealed class CodeModeHandlerTests
     {
         ToolRegistry registry = new([TestTools.Create("brewery_search", "Find breweries", "{\"type\":\"object\"}")]);
         DiscoveryTools discoveryTools = new(registry, new WeightedToolSearcher(registry));
-        CodeModeWorkflowGuard workflowGuard = new();
 
         ArgumentException ex = Assert.Throws<ArgumentException>(() =>
-            CodeModeHandlers.get_schema(
+            CodeModeHandlers.GetSchema(
                 discoveryTools,
-                workflowGuard,
                 new UserContext(),
                 NullLoggerFactory.Instance,
                 toolNames: null,
@@ -55,11 +51,9 @@ public sealed class CodeModeHandlerTests
     {
         ToolRegistry registry = new([TestTools.Create("brewery_search", "Find breweries", "{\"type\":\"object\"}")]);
         DiscoveryTools discoveryTools = new(registry, new WeightedToolSearcher(registry));
-        CodeModeWorkflowGuard workflowGuard = new();
 
-        DiscoverySearchResponse response = CodeModeHandlers.search(
+        DiscoverySearchResponse response = CodeModeHandlers.Search(
             discoveryTools,
-            workflowGuard,
             new UserContext(),
             NullLoggerFactory.Instance,
             "brewery",
@@ -72,49 +66,12 @@ public sealed class CodeModeHandlerTests
     }
 
     [Fact]
-    public async Task Execute_RequiresSearchThenGetSchema()
+    public async Task Execute_ReturnsRunnerResult()
     {
-        CodeModeWorkflowGuard workflowGuard = new();
         ISandboxRunner runner = new StubRunner(new RunnerResult(42, 0));
         ExecuteTool executeTool = new(runner);
 
-        InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            CodeModeHandlers.execute("result = 42", executeTool, workflowGuard, NullLoggerFactory.Instance, CancellationToken.None));
-
-        Assert.Contains("search", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("get_schema", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task Execute_AllowsWhenSearchAndGetSchemaWereCalled()
-    {
-        ToolRegistry registry = new([TestTools.Create("brewery_search", "Find breweries", "{\"type\":\"object\"}")]);
-        DiscoveryTools discoveryTools = new(registry, new WeightedToolSearcher(registry));
-        CodeModeWorkflowGuard workflowGuard = new();
-
-        _ = CodeModeHandlers.search(
-            discoveryTools,
-            workflowGuard,
-            new UserContext(),
-            NullLoggerFactory.Instance,
-            "brewery",
-            detail: TestJson.Parse("\"brief\""),
-            tags: null,
-            limit: 10);
-
-        _ = CodeModeHandlers.get_schema(
-            discoveryTools,
-            workflowGuard,
-            new UserContext(),
-            NullLoggerFactory.Instance,
-            toolNames: ["brewery_search"],
-            name: null,
-            detail: TestJson.Parse("\"brief\""));
-
-        ISandboxRunner runner = new StubRunner(new RunnerResult(42, 0));
-        ExecuteTool executeTool = new(runner);
-
-        object? result = await CodeModeHandlers.execute("result = 42", executeTool, workflowGuard, NullLoggerFactory.Instance, CancellationToken.None);
+        object? result = await CodeModeHandlers.Execute("result = 42", executeTool, NullLoggerFactory.Instance, CancellationToken.None);
 
         int final = Assert.IsType<int>(result);
         Assert.Equal(42, final);

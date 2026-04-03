@@ -15,13 +15,13 @@ public sealed class ExecuteTool(ISandboxRunner runner)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
 
-        using Activity? activity = ActivitySource.StartActivity("codemode.execute", ActivityKind.Internal);
+        using Activity? activity = ActivitySource.StartActivity("codemode.Execute", ActivityKind.Internal);
         activity?.SetTag("mcp.code.length", code.Length);
 
         RunnerResult result = await runner.RunAsync(code, ct);
 
-        activity?.SetTag("mcp.execute.callCount", result.CallsExecuted);
-        activity?.SetTag("mcp.execute.hasFinalValue", result.FinalValue is not null);
+        activity?.SetTag("mcp.Execute.callCount", result.CallsExecuted);
+        activity?.SetTag("mcp.Execute.hasFinalValue", result.FinalValue is not null);
 
         return new ExecuteResponse(result.FinalValue);
     }

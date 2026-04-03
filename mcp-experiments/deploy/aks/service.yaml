@@ -1,6 +1,20 @@
 apiVersion: v1
 kind: Service
 metadata:
+  name: opensandbox-server
+  namespace: mcp-experiments
+spec:
+  selector:
+    app: opensandbox-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: aspire-dashboard
   namespace: mcp-experiments
 spec:
@@ -42,6 +56,6 @@ spec:
     app: testweb
   ports:
     - name: http
-      port: 8080
-      targetPort: 8080
+      port: 8082
+      targetPort: 8082
   type: ClusterIP

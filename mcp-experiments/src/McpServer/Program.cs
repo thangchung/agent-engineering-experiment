@@ -10,7 +10,7 @@ using McpServer.OpenApi;
 using McpServer.Registry;
 using McpServer.Search;
 using McpServer.Services;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 using ModelContextProtocol.Server;
 using Spectre.Console.Cli;
 
@@ -69,7 +69,6 @@ builder.Services.AddSingleton<IToolSearcher, WeightedToolSearcher>();
 builder.Services.AddSingleton<MetaTools>();
 builder.Services.AddSingleton<ToolInvoker>();
 builder.Services.AddSingleton<DiscoveryTools>();
-builder.Services.AddSingleton<CodeModeWorkflowGuard>();
 // Runtime selection defaults to local constrained execution.
 // Set CodeMode:Runner=opensandbox and OpenSandbox:* settings to enable OpenSandbox-backed preflight.
 builder.Services.AddSingleton<ISandboxRunner>(sp =>
@@ -120,7 +119,7 @@ app.Use(async (context, next) =>
                 if (!string.IsNullOrWhiteSpace(toolName) && !exposedMcpToolNames.Contains(toolName))
                 {
                     app.Logger.LogInformation(
-                        "MCP unknown tool probe: {ToolName}. This is expected for non-exposed tools in tool-search mode.",
+                        "MCP unknown tool probe: {ToolName}. This is expected for non-exposed tools in tool-Search mode.",
                         toolName);
                 }
             }

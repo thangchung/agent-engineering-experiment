@@ -1,7 +1,7 @@
-namespace McpServer.Tools;
+namespace McpServer.ToolSearch;
 
 /// <summary>
-/// Public projection used by synthetic search and listing APIs.
+/// Public projection used by synthetic Search and listing APIs.
 /// </summary>
 public sealed record ToolDefinition(
     string Name,

@@ -31,18 +31,17 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         Runner: OpenSandbox (Python)
         Write pure Python code.
         You may call HTTP APIs directly from Python code when needed.
-        Prefer Python standard library modules for HTTP calls, for example `urllib.request` with an explicit timeout.
-        IMPORTANT: Always set a User-Agent header on HTTP requests. Many APIs reject the default Python User-Agent with 403 Forbidden.
-        Prefer assigning the final value to `result`.
+        A lightweight `requests`-compatible shim is available for basic HTTP requests; set a timeout (for example: timeout=10).
+        Assign the final value to a variable named exactly `result` (lowercase).
         If `result` is not set, captured stdout is returned when available.
-        Code mode is fully isolated from tool-search tools.
-        Do NOT use: search_tools, call_tool, search, get_schema, or execute in this code.
+        CRITICAL: Do NOT use `Result`, `RESULT`, or any other casing — only lowercase `result` is captured.
+        Do NOT use bare identifiers as section dividers (e.g., `Result # comment`). Use only `#` comments.
+        Code mode is fully isolated from tool-Search tools.
+        Do NOT use: SearchTools, CallTool, Search, GetSchema, or Execute in this code.
         HTTP example:
-            import urllib.request, json
-            req = urllib.request.Request("https://api.example.com/data", headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
-            result = data
+            import requests
+            response = requests.get("https://api.example.com/data", timeout=10)
+            result = response.json()
         Compute example:
             data = [1, 2, 3]
             result = sum(data)
@@ -78,7 +77,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
     /// <summary>
     /// Executes Python code inside an OpenSandbox container with retry logic.
     /// The code must assign its final value to a <c>result</c> variable.
-    /// Tool-search meta-tool calls are explicitly forbidden in code mode.
+    /// Tool-Search meta-tool calls are explicitly forbidden in code mode.
     /// </summary>
     public async Task<RunnerResult> RunAsync(string code, CancellationToken ct)
     {
@@ -93,16 +92,16 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         activity?.SetTag("mcp.sandbox.domain", options.Domain);
         activity?.SetTag("mcp.sandbox.image", options.Image);
 
-        // Code mode must stay isolated from tool-search meta-tools.
+        // Code mode must stay isolated from tool-Search meta-tools.
         if (SandboxCodeGuard.ContainsForbiddenMetaToolUsage(code))
         {
             throw new InvalidOperationException(
-            "Code mode is isolated from tool-search tools. " +
-            "Do not call search_tools, call_tool, search, get_schema, or execute inside code mode; use pure Python compute only.");
+            "Code mode is isolated from tool-Search tools. " +
+            "Do not call SearchTools, CallTool, Search, GetSchema, or Execute inside code mode; use pure Python compute only.");
         }
 
         logger.LogInformation(
-            "Generated Python code for OpenSandbox execute:\n{Code}",
+            "Generated Python code for OpenSandbox Execute:\n{Code}",
             code);
 
         try
@@ -111,17 +110,17 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
             RunnerResult remoteResult = await remoteExecutor(code, linkedCts.Token);
-            activity?.SetTag("mcp.execute.mode", "opensandbox");
-            activity?.SetTag("mcp.execute.callCount", remoteResult.CallsExecuted);
-            activity?.SetTag("mcp.execute.hasFinalValue", remoteResult.FinalValue is not null);
+            activity?.SetTag("mcp.Execute.mode", "opensandbox");
+            activity?.SetTag("mcp.Execute.callCount", remoteResult.CallsExecuted);
+            activity?.SetTag("mcp.Execute.hasFinalValue", remoteResult.FinalValue is not null);
             return remoteResult;
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            activity?.SetTag("mcp.execute.mode", "opensandbox");
-            activity?.SetTag("mcp.execute.timeout", true);
+            activity?.SetTag("mcp.Execute.mode", "opensandbox");
+            activity?.SetTag("mcp.Execute.timeout", true);
             activity?.SetTag("error.type", nameof(OperationCanceledException));
-            activity?.AddEvent(new ActivityEvent("remote.execute.timeout"));
+            activity?.AddEvent(new ActivityEvent("remote.Execute.timeout"));
 
             throw new TimeoutException(
                 $"OpenSandbox execution timed out after {options.Timeout.TotalSeconds:0.###}s.",
@@ -129,10 +128,10 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            activity?.SetTag("mcp.execute.mode", "opensandbox");
-            activity?.SetTag("mcp.execute.remoteFailed", true);
+            activity?.SetTag("mcp.Execute.mode", "opensandbox");
+            activity?.SetTag("mcp.Execute.remoteFailed", true);
             activity?.SetTag("error.type", ex.GetType().Name);
-            activity?.AddEvent(new ActivityEvent("remote.execute.failed"));
+            activity?.AddEvent(new ActivityEvent("remote.Execute.failed"));
             throw;
         }
     }
@@ -148,7 +147,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         string code,
         CancellationToken ct)
     {
-        using Activity? activity = ActivitySource.StartActivity("opensandbox.execute.remote", ActivityKind.Internal);
+        using Activity? activity = ActivitySource.StartActivity("opensandbox.Execute.remote", ActivityKind.Internal);
         activity?.SetTag("mcp.sandbox.domain", options.Domain);
         activity?.SetTag("mcp.sandbox.image", options.Image);
 
@@ -243,14 +242,14 @@ public sealed class OpenSandboxRunner : ISandboxRunner
 
         logger.LogInformation("OpenSandbox remote execution succeeded for domain {Domain}.", options.Domain);
 
-        activity?.SetTag("mcp.execute.callCount", 0);
+        activity?.SetTag("mcp.Execute.callCount", 0);
         object? finalValue = payload.FinalValue;
         if (finalValue is null && !string.IsNullOrWhiteSpace(payload.Stdout))
         {
             finalValue = payload.Stdout.TrimEnd();
         }
 
-        activity?.SetTag("mcp.execute.hasFinalValue", finalValue is not null);
+        activity?.SetTag("mcp.Execute.hasFinalValue", finalValue is not null);
 
         return new RunnerResult(finalValue, 0);
     }
@@ -258,7 +257,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
 
 
     /// <summary>
-    /// Builds the Python command to execute user code with proper isolation and error handling.
+    /// Builds the Python command to Execute user code with proper isolation and error handling.
     /// </summary>
     private static string BuildPythonCommand(string encodedCode)
     {
@@ -268,9 +267,87 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             import contextlib
             import io
             import json
+            import sys
             import traceback
+            import types
+            import urllib.error
+            import urllib.parse
+            import urllib.request
 
             code = base64.b64decode("{{encodedCode}}".encode("ascii")).decode("utf-8")
+
+            # Install a default opener with explicit headers. Some public APIs reject
+            # Python's default urllib user-agent and return HTTP 403.
+            _opener = urllib.request.build_opener()
+            _opener.addheaders = [
+                ("User-Agent", "mcp-experiments/1.0"),
+                ("Accept", "application/json"),
+            ]
+            urllib.request.install_opener(_opener)
+
+            class _RequestsError(Exception):
+                pass
+
+            class _RequestsHttpError(_RequestsError):
+                pass
+
+            class _RequestsResponse:
+                def __init__(self, status_code, content, headers):
+                    self.status_code = status_code
+                    self.content = content
+                    self.headers = dict(headers.items()) if headers is not None else {}
+                    self.text = content.decode("utf-8", errors="replace")
+
+                def json(self):
+                    if not self.text:
+                        return None
+                    return json.loads(self.text)
+
+                def raise_for_status(self):
+                    if self.status_code >= 400:
+                        raise _RequestsHttpError(f"HTTP {self.status_code}")
+
+            def _append_query(url, params):
+                if not params:
+                    return url
+
+                query = urllib.parse.urlencode(params, doseq=True)
+                separator = "&" if "?" in url else "?"
+                return f"{url}{separator}{query}"
+
+            def _normalize_body(data, json_payload, headers):
+                if json_payload is not None:
+                    headers.setdefault("Content-Type", "application/json")
+                    return json.dumps(json_payload).encode("utf-8")
+
+                if isinstance(data, str):
+                    return data.encode("utf-8")
+
+                return data
+
+            def _requests_request(method, url, params=None, data=None, json=None, headers=None, timeout=None):
+                request_headers = dict(headers or {})
+                request_url = _append_query(url, params)
+                request_body = _normalize_body(data, json, request_headers)
+                request = urllib.request.Request(request_url, data=request_body, headers=request_headers, method=method.upper())
+
+                try:
+                    with urllib.request.urlopen(request, timeout=timeout) as response:
+                        return _RequestsResponse(response.getcode(), response.read(), response.headers)
+                except urllib.error.HTTPError as ex:
+                    return _RequestsResponse(ex.code, ex.read(), ex.headers)
+
+            requests = types.ModuleType("requests")
+            requests.RequestException = _RequestsError
+            requests.HTTPError = _RequestsHttpError
+            requests.request = _requests_request
+            requests.get = lambda url, **kwargs: _requests_request("GET", url, **kwargs)
+            requests.post = lambda url, **kwargs: _requests_request("POST", url, **kwargs)
+            requests.put = lambda url, **kwargs: _requests_request("PUT", url, **kwargs)
+            requests.delete = lambda url, **kwargs: _requests_request("DELETE", url, **kwargs)
+            requests.patch = lambda url, **kwargs: _requests_request("PATCH", url, **kwargs)
+            sys.modules["requests"] = requests
+
             scope = {}
             captured_stdout = io.StringIO()
             captured_stderr = io.StringIO()

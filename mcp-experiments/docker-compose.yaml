@@ -2,6 +2,8 @@ services:
   opensandbox-server:
     image: docker.io/opensandbox/server:v0.1.8
     container_name: opensandbox-server
+    ports:
+      - "8080:8080"
     restart: unless-stopped
     environment:
       OPEN_SANDBOX_API_KEY: ""
@@ -56,18 +58,15 @@ services:
     image: mcp-experiments/testweb:local
     container_name: testweb
     environment:
-      DataProtection__KeysPath: /var/app/data-protection-keys
       Mcp__Endpoint: http://mcp-server:8081/mcp
       OTEL_SERVICE_NAME: testweb
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
-      - "8080:8080"
+      - "8082:8082"
     depends_on:
       - mcp-server
       - aspire-dashboard
-    volumes:
-      - testweb-data-protection:/var/app/data-protection-keys
     restart: unless-stopped
 
 volumes:

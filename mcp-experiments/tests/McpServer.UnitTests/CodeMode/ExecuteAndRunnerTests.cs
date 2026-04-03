@@ -13,7 +13,7 @@ public sealed class ExecuteAndRunnerTests
     {
         LocalConstrainedRunner runner = new(TimeSpan.FromSeconds(2), maxToolCalls: 10, NullLogger<LocalConstrainedRunner>.Instance);
         string code = """
-            result = call_tool("brewery_search", {"query": "moon"})
+            result = CallTool("brewery_search", {"query": "moon"})
             """;
 
         InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>

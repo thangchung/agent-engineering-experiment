@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace McpServer.Registry;
 
 /// <summary>
-/// Delegate used by the registry to execute a tool handler.
+/// Delegate used by the registry to Execute a tool handler.
 /// </summary>
 /// <param name="arguments">Input arguments represented as JSON.</param>
 /// <param name="ct">Cancellation token for cooperative cancellation.</param>

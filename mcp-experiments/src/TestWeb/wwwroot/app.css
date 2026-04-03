@@ -98,13 +98,32 @@ h1:focus {
     word-break: break-word;
 }
 .chat-layout {
-    max-width: 960px;
+    width: 100%;
 }
 .chat-samples {
     border: 1px solid #d0d7de;
     border-radius: 8px;
     padding: 0.75rem;
     background: #f6f8fa;
+}
+.sample-link {
+    cursor: pointer;
+    color: inherit;
+}
+.sample-link:hover {
+    text-decoration: underline;
+}
+.sample-pre {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 0.875em;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 0.5rem;
+    margin-top: 0.25rem;
+    max-height: 200px;
+    overflow-y: auto;
 }
 .chat-log {
     border: 1px solid #d0d7de;
@@ -147,29 +166,155 @@ h1:focus {
     padding-left: 1.25rem;
 }
 
-.chat-content.markdown-content table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.5rem 0;
+.chat-content.markdown-content table,
+.chat-content.chat-structured table {
+    width: fit-content;
+    max-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 0.75rem 0;
     display: block;
     overflow-x: auto;
     white-space: nowrap;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
 }
 
 .chat-content.markdown-content th,
-.chat-content.markdown-content td {
-    border: 1px solid #d0d7de;
+.chat-content.markdown-content td,
+.chat-content.chat-structured th,
+.chat-content.chat-structured td {
     padding: 0.35rem 0.5rem;
     text-align: left;
     vertical-align: top;
+    border-right: 1px solid #d0d7de;
+    border-bottom: 1px solid #d0d7de;
 }
 
-.chat-content.markdown-content th {
-    background: #f6f8fa;
+.chat-content.markdown-content th,
+.chat-content.chat-structured th {
+    background: #eef3ff;
     font-weight: 600;
+}
+
+.chat-content.markdown-content th:last-child,
+.chat-content.markdown-content td:last-child,
+.chat-content.chat-structured th:last-child,
+.chat-content.chat-structured td:last-child {
+    border-right: 0;
+}
+
+.chat-content.markdown-content tbody tr:last-child td,
+.chat-content.chat-structured tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.chat-content.markdown-content tbody tr:nth-child(even),
+.chat-content.chat-structured tbody tr:nth-child(even) {
+    background: #f8fbff;
+}
+
+.chat-content.chat-structured p {
+    margin-bottom: 0.75rem;
+}
+
+.chat-content.chat-structured .structured-root {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.chat-content.chat-structured .structured-section {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.chat-content.chat-structured .structured-label {
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 0.35rem;
+}
+
+.chat-content.chat-structured .structured-object {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.chat-content.chat-structured .structured-scalar {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-content.chat-structured .structured-list {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.chat-content.chat-structured .structured-list > li {
+    margin-bottom: 0.4rem;
 }
 
 .json-null {
     color: #94a3b8;
     font-style: italic;
+}
+
+.send-button {
+    min-width: 92px;
+}
+
+.sending-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.sending-spinner {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    animation: send-spin 0.75s linear infinite;
+}
+
+.sending-text {
+    display: inline-flex;
+    align-items: baseline;
+}
+
+.sending-dots::after {
+    content: "...";
+    display: inline-block;
+    width: 1ch;
+    overflow: hidden;
+    animation: send-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes send-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes send-dots {
+    0% {
+        width: 0;
+    }
+
+    25% {
+        width: 0.35ch;
+    }
+
+    50% {
+        width: 0.7ch;
+    }
+
+    75% {
+        width: 1ch;
+    }
+
+    100% {
+        width: 0;
+    }
 }

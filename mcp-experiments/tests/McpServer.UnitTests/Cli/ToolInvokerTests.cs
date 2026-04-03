@@ -1,7 +1,7 @@
 using McpServer.Cli;
 using McpServer.Registry;
 using McpServer.Search;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 
 namespace McpServer.UnitTests.Cli;
 

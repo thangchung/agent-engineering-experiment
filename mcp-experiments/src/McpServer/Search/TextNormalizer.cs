@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace McpServer.Search;
 
 /// <summary>
-/// Provides deterministic text normalization and tokenization for search scoring.
+/// Provides deterministic text normalization and tokenization for Search scoring.
 /// </summary>
 public static partial class TextNormalizer
 {

@@ -7,7 +7,7 @@ using System.Text.Json;
 namespace McpServer.CodeMode;
 
 /// <summary>
-/// Staged discovery API used before execute.
+/// Staged discovery API used before Execute.
 /// </summary>
 public sealed class DiscoveryTools(IToolRegistry registry, IToolSearcher searcher)
 {
@@ -27,7 +27,7 @@ public sealed class DiscoveryTools(IToolRegistry registry, IToolSearcher searche
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentNullException.ThrowIfNull(context);
 
-        using Activity? activity = ActivitySource.StartActivity("codemode.search", ActivityKind.Internal);
+        using Activity? activity = ActivitySource.StartActivity("codemode.Search", ActivityKind.Internal);
         activity?.SetTag("mcp.query", query);
         activity?.SetTag("mcp.detail", detail.ToString());
         activity?.SetTag("mcp.tags.count", tags?.Count ?? 0);
@@ -78,7 +78,7 @@ public sealed class DiscoveryTools(IToolRegistry registry, IToolSearcher searche
         ArgumentNullException.ThrowIfNull(toolNames);
         ArgumentNullException.ThrowIfNull(context);
 
-        using Activity? activity = ActivitySource.StartActivity("codemode.get_schema", ActivityKind.Internal);
+        using Activity? activity = ActivitySource.StartActivity("codemode.GetSchema", ActivityKind.Internal);
         activity?.SetTag("mcp.detail", detail.ToString());
         activity?.SetTag("mcp.toolNames.count", toolNames.Count);
 
@@ -142,7 +142,7 @@ public sealed class DiscoveryTools(IToolRegistry registry, IToolSearcher searche
     }
 
     /// <summary>
-    /// Builds schema projection for search results according to detail level.
+    /// Builds schema projection for Search results according to detail level.
     /// </summary>
     private static string? BuildSchemaProjection(ToolDescriptor tool, SchemaDetailLevel detail)
     {

@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\McpServer\McpServer.csproj" />
+    <ProjectReference Include="..\..\src\TestWeb\TestWeb.csproj" />
   </ItemGroup>
 
 </Project>

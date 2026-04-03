@@ -1,8 +1,8 @@
 using McpServer.Registry;
 using McpServer.Search;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 
-namespace McpServer.UnitTests.Tools;
+namespace McpServer.UnitTests.ToolSearch;
 
 public sealed class MetaToolsTests
 {
@@ -30,6 +30,6 @@ public sealed class MetaToolsTests
         MetaTools metaTools = new(registry, searcher);
 
         await Assert.ThrowsAsync<SyntheticToolRecursionException>(() =>
-            metaTools.CallToolAsync("call_tool", TestTools.EmptyArgs(), new UserContext(), CancellationToken.None));
+            metaTools.CallToolAsync("CallTool", TestTools.EmptyArgs(), new UserContext(), CancellationToken.None));
     }
 }

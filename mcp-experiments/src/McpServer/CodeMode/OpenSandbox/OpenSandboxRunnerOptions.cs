@@ -53,7 +53,7 @@ public sealed class OpenSandboxRunnerOptions
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Maximum tool calls allowed in one execute block.
+    /// Maximum tool calls allowed in one Execute block.
     /// </summary>
     public int MaxToolCalls { get; init; } = 10;
 }

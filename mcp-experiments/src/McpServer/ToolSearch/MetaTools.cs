@@ -3,23 +3,23 @@ using System.Diagnostics;
 using McpServer.Registry;
 using McpServer.Search;
 
-namespace McpServer.Tools;
+namespace McpServer.ToolSearch;
 
 /// <summary>
-/// Synthetic tool surface that exposes search and safe proxy invocation.
+/// Synthetic tool surface that exposes Search and safe proxy invocation.
 /// </summary>
 public sealed class MetaTools(IToolRegistry registry, IToolSearcher searcher)
 {
     private static readonly ActivitySource ActivitySource = new("McpServer.MetaTools");
     private static readonly HashSet<string> RecursiveSyntheticCalls =
-        ["search_tools", "call_tool", "search", "get_schema", "execute"];
+        ["searchtools", "calltool", "search", "getschema", "getexecutesyntax", "execute", "search_tools", "call_tool", "get_schema", "get_execute_syntax"];
 
     /// <summary>
     /// Searches visible tools and returns compact schema-bearing definitions.
     /// </summary>
     public IReadOnlyList<ToolDefinition> SearchTools(string query, int limit, UserContext context)
     {
-        using Activity? activity = ActivitySource.StartActivity("meta.search_tools", ActivityKind.Internal);
+        using Activity? activity = ActivitySource.StartActivity("meta.SearchTools", ActivityKind.Internal);
         activity?.SetTag("mcp.query", query);
         activity?.SetTag("mcp.limit", limit);
 
@@ -39,7 +39,7 @@ public sealed class MetaTools(IToolRegistry registry, IToolSearcher searcher)
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(context);
 
-        using Activity? activity = ActivitySource.StartActivity("meta.call_tool", ActivityKind.Internal);
+        using Activity? activity = ActivitySource.StartActivity("meta.CallTool", ActivityKind.Internal);
         activity?.SetTag("mcp.tool.name", name);
 
         if (RecursiveSyntheticCalls.Contains(name.ToLowerInvariant()))

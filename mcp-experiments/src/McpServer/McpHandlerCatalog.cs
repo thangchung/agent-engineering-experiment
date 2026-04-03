@@ -1,6 +1,6 @@
 using System.Reflection;
 using McpServer.CodeMode;
-using McpServer.Tools;
+using McpServer.ToolSearch;
 using ModelContextProtocol.Server;
 
 namespace McpServer;
@@ -21,7 +21,11 @@ internal static class McpHandlerCatalog
     public static HashSet<string> GetExposedToolNames()
     {
         return GetExposedToolMethods()
-            .Select(method => method.Name)
+            .Select(static method =>
+            {
+                McpServerToolAttribute? attribute = method.GetCustomAttribute<McpServerToolAttribute>();
+                return string.IsNullOrWhiteSpace(attribute?.Name) ? method.Name : attribute.Name;
+            })
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }

@@ -53,7 +53,7 @@ public sealed class DiscoveryToolsTests
         ]);
         DiscoveryTools tools = new(registry, new WeightedToolSearcher(registry));
 
-        DiscoverySearchResponse response = tools.Search("search", new UserContext(), tags: ["brewery"]);
+        DiscoverySearchResponse response = tools.Search("Search", new UserContext(), tags: ["brewery"]);
 
         Assert.Single(response.Results);
         Assert.Equal("brewery_search", response.Results[0].Name);
