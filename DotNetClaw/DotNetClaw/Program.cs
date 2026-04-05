@@ -113,6 +113,8 @@ builder.Services.AddSingleton<AIAgent>(sp =>
             (tool.Description ?? "").Length > 80 ? tool.Description![..80] + "…" : tool.Description ?? "");
     startupLog.LogInformation("[Agent] Total tools: {Count}", tools.Count);
 
+    var functionTools = tools.OfType<AIFunction>().ToList();
+
     var copilotClient = new CopilotClient(new CopilotClientOptions
     {
         Cwd       = mind.MindRoot,
@@ -123,7 +125,7 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     if (ollamaEnabled)
     {
         startupLog.LogInformation("[Agent] Ollama mode: model={Model} baseUrl={BaseUrl}", ollamaModel, ollamaBaseUrl);
-        var sessionConfig = new SessionConfig
+        var ollamaSessionConfig = new SessionConfig
         {
             Provider = new ProviderConfig { Type = "openai", BaseUrl = ollamaBaseUrl },
             Model    = ollamaModel,
@@ -132,25 +134,35 @@ builder.Services.AddSingleton<AIAgent>(sp =>
                 Mode    = SystemMessageMode.Replace,
                 Content = systemMessage + skillAdvertisement,
             },
-            Tools = tools.OfType<AIFunction>().ToList(),
+            Tools = functionTools,
             // approve all tool calls — MAF handles tool security at the channel layer
-            OnPermissionRequest = (_, _) => Task.FromResult(new PermissionRequestResult { Kind = "allow" }),
+            OnPermissionRequest = PermissionHandler.ApproveAll,
         };
         return copilotClient.AsAIAgent(
-            sessionConfig: sessionConfig,
+            sessionConfig: ollamaSessionConfig,
             ownsClient:    true,
             id:            "dotnetclaw",
             name:          "DotNetClaw",
             description:   "Personal AI assistant");
     }
 
+    var defaultSessionConfig = new SessionConfig
+    {
+        SystemMessage = new SystemMessageConfig
+        {
+            Mode    = SystemMessageMode.Replace,
+            Content = systemMessage + skillAdvertisement,
+        },
+        Tools = functionTools,
+        OnPermissionRequest = PermissionHandler.ApproveAll,
+    };
+
     return copilotClient.AsAIAgent(
-        ownsClient:   true,
-        id:           "dotnetclaw",
-        name:         "DotNetClaw",
-        description:  "Personal AI assistant",
-        tools:        tools,
-        instructions: systemMessage + skillAdvertisement);
+        sessionConfig: defaultSessionConfig,
+        ownsClient:    true,
+        id:            "dotnetclaw",
+        name:          "DotNetClaw",
+        description:   "Personal AI assistant");
 });
 
 builder.Services.AddSingleton<ClawRuntime>();

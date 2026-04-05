@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.1.0">
+<Project Sdk="Aspire.AppHost.Sdk/13.2.1">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,10 +8,6 @@
     <RootNamespace>DotNetClaw.AppHost</RootNamespace>
     <UserSecretsId>dotnetclaw-apphost</UserSecretsId>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.1.0" />
-  </ItemGroup>
 
   <ItemGroup>
     <!-- Wire up the main DotNetClaw project as an Aspire resource -->

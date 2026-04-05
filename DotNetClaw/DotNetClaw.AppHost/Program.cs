@@ -10,7 +10,7 @@ var coffeeshop = builder
 // Aspire will launch it, inject ASPNETCORE_URLS, and expose it in the dashboard.
 var app = builder.AddProject<Projects.DotNetClaw>("dotnetclaw")
     .WithEnvironment("CoffeeshopCli__Mode", "mcp") // cli or mcp
-    .WithEnvironment("Ollama__Enabled", "true")
+    .WithEnvironment("Ollama__Enabled", "false")
     .WaitFor(coffeeshop)
     ;
 

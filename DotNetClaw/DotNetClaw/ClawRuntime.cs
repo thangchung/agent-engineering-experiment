@@ -30,8 +30,12 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
     public ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger, IConfiguration config) : this(agent, logger)
     {
         _ollamaEnabled = config["Ollama:Enabled"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
-        _ollamaModel = config["Ollama:Model"] ?? "(default)";
-        _ollamaBaseUrl = config["Ollama:BaseUrl"] ?? "(default)";
+        
+        if (_ollamaEnabled)
+        {
+            _ollamaModel = config["Ollama:Model"] ?? "(default)";
+            _ollamaBaseUrl = config["Ollama:BaseUrl"] ?? "(default)";
+        }
     }
 
     /// <summary>Streaming variant — yields response text chunks as they arrive.</summary>
@@ -84,15 +88,15 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
                 _ollamaBaseUrl);
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
-            string result = string.Empty;
+            var sb = new System.Text.StringBuilder();
             await foreach (var update in agent.RunStreamingAsync(message, session, null, ct))
             {
                 if (!string.IsNullOrEmpty(update.Text))
                 {
-                    result = update.Text;
+                    sb.Append(update.Text);
                 }
             }
-            return result;
+            return sb.ToString();
         }
         finally
         {
