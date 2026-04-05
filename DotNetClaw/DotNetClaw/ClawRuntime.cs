@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Agents.AI;
 
@@ -43,8 +44,22 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
         string sessionId, string message,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var session = await GetOrCreateAsync(sessionId, ct);
+        var (session, isNewSession) = await GetOrCreateAsync(sessionId, ct);
         var sem = _locks.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        var channel = GetChannelFromSessionId(sessionId);
+
+        ClawTelemetry.RequestsTotal.Add(1,
+            new KeyValuePair<string, object?>("channel", channel),
+            new KeyValuePair<string, object?>("streaming", true));
+
+        var start = Stopwatch.GetTimestamp();
+
+        using var activity = ClawTelemetry.ActivitySource.StartActivity("clawruntime.handle.streaming", ActivityKind.Internal);
+        activity?.SetTag("session.id", sessionId);
+        activity?.SetTag("session.is_new", isNewSession);
+        activity?.SetTag("channel", channel);
+        activity?.SetTag("message.length", message.Length);
+        activity?.SetTag("runtime.mode", _ollamaEnabled ? "ollama" : "copilot-default");
 
         await sem.WaitAsync(ct);
         try
@@ -56,17 +71,33 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
                 _ollamaBaseUrl);
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
+            var chunkCount = 0;
+            var totalResponseChars = 0;
+
             await foreach (var update in agent.RunStreamingAsync(message, session, null, ct))
             {
                 if (!string.IsNullOrEmpty(update.Text))
                 {
+                    chunkCount++;
+                    totalResponseChars += update.Text.Length;
                     yield return update.Text;
                 }
             }
+
+            activity?.SetTag("response.chunks", chunkCount);
+            activity?.SetTag("response.length", totalResponseChars);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            ClawTelemetry.ResponseLengthChars.Record(totalResponseChars,
+                new KeyValuePair<string, object?>("channel", channel),
+                new KeyValuePair<string, object?>("streaming", true));
         }
         finally
         {
             sem.Release();
+            var elapsedMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            ClawTelemetry.RequestDurationMs.Record(elapsedMs,
+                new KeyValuePair<string, object?>("channel", channel),
+                new KeyValuePair<string, object?>("streaming", true));
         }
     }
 
@@ -75,8 +106,22 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
     /// </summary>
     public async Task<string> HandleAsync(string sessionId, string message, CancellationToken ct = default)
     {
-        var session = await GetOrCreateAsync(sessionId, ct);
+        var (session, isNewSession) = await GetOrCreateAsync(sessionId, ct);
         var sem = _locks.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        var channel = GetChannelFromSessionId(sessionId);
+
+        ClawTelemetry.RequestsTotal.Add(1,
+            new KeyValuePair<string, object?>("channel", channel),
+            new KeyValuePair<string, object?>("streaming", false));
+
+        var start = Stopwatch.GetTimestamp();
+
+        using var activity = ClawTelemetry.ActivitySource.StartActivity("clawruntime.handle", ActivityKind.Internal);
+        activity?.SetTag("session.id", sessionId);
+        activity?.SetTag("session.is_new", isNewSession);
+        activity?.SetTag("channel", channel);
+        activity?.SetTag("message.length", message.Length);
+        activity?.SetTag("runtime.mode", _ollamaEnabled ? "ollama" : "copilot-default");
 
         await sem.WaitAsync(ct);
         try
@@ -96,18 +141,48 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
                     sb.Append(update.Text);
                 }
             }
-            return sb.ToString();
+            var response = sb.ToString();
+
+            activity?.SetTag("response.length", response.Length);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            ClawTelemetry.ResponseLengthChars.Record(response.Length,
+                new KeyValuePair<string, object?>("channel", channel),
+                new KeyValuePair<string, object?>("streaming", false));
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.SetTag("error.type", ex.GetType().Name);
+            activity?.SetTag("error.message", ex.Message);
+            ClawTelemetry.ErrorsTotal.Add(1,
+                new KeyValuePair<string, object?>("channel", channel),
+                new KeyValuePair<string, object?>("streaming", false));
+            throw;
         }
         finally
         {
             sem.Release();
+            var elapsedMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            ClawTelemetry.RequestDurationMs.Record(elapsedMs,
+                new KeyValuePair<string, object?>("channel", channel),
+                new KeyValuePair<string, object?>("streaming", false));
         }
     }
 
-    private async ValueTask<AgentSession> GetOrCreateAsync(string sessionId, CancellationToken ct)
+    private async ValueTask<(AgentSession Session, bool IsNewSession)> GetOrCreateAsync(string sessionId, CancellationToken ct)
     {
-        if (_sessions.TryGetValue(sessionId, out var existing)) return existing;
+        if (_sessions.TryGetValue(sessionId, out var existing)) return (existing, false);
         var newSession = await agent.CreateSessionAsync(ct);
-        return _sessions.GetOrAdd(sessionId, newSession);
+        var session = _sessions.GetOrAdd(sessionId, newSession);
+        return (session, ReferenceEquals(session, newSession));
+    }
+
+    private static string GetChannelFromSessionId(string sessionId)
+    {
+        var index = sessionId.IndexOf(':');
+        return index > 0 ? sessionId[..index] : "unknown";
     }
 }

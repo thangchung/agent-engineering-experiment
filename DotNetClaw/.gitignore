@@ -47,4 +47,5 @@ coverage*/
 **/.env.local
 
 settings.local.json
+.env
 

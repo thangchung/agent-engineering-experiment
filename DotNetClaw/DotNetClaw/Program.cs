@@ -2,11 +2,17 @@ using DotNetClaw;
 using GitHub.Copilot.SDK;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing.AddSource(ClawTelemetry.ActivitySourceName))
+    .WithMetrics(metrics => metrics.AddMeter(ClawTelemetry.MeterName));
 
 builder.Services.AddSingleton<MindLoader>();
 
@@ -115,12 +121,31 @@ builder.Services.AddSingleton<AIAgent>(sp =>
 
     var functionTools = tools.OfType<AIFunction>().ToList();
 
-    var copilotClient = new CopilotClient(new CopilotClientOptions
+    var gitHubToken = config["Copilot:GitHubToken"];
+    var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
+    var isLocal = hostEnvironment.IsDevelopment();
+    var useExplicitToken = !isLocal && !string.IsNullOrWhiteSpace(gitHubToken);
+
+    if (useExplicitToken && gitHubToken!.StartsWith("ghp_", StringComparison.Ordinal))
+        throw new InvalidOperationException("Classic PATs (ghp_) are not supported. Use a fine-grained PAT (github_pat_), OAuth (gho_), or user token (ghu_).");
+
+    var copilotOptions = new CopilotClientOptions
     {
         Cwd       = mind.MindRoot,
         AutoStart = true,
         UseStdio  = true,
-    });
+    };
+
+    if (useExplicitToken)
+    {
+        copilotOptions.GitHubToken = gitHubToken;
+        copilotOptions.UseLoggedInUser = false;
+    }
+
+    startupLog.LogInformation("[Auth] local={Local}, tokenConfigured={Configured}, explicitToken={Explicit}",
+        isLocal, !string.IsNullOrWhiteSpace(gitHubToken), useExplicitToken);
+
+    var copilotClient = new CopilotClient(copilotOptions);
 
     if (ollamaEnabled)
     {
@@ -181,7 +206,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference(options => options.WithTitle("DotNetClaw API"));
 }
 
-app.MapGet("/", () => Results.Ok(new { name = "DotNetClaw", status = "running" }));
+app.MapWebChannel();
 
 app.MapSlack(builder.Configuration);
 

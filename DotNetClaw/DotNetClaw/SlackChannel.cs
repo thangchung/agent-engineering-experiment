@@ -2,6 +2,7 @@ using SlackNet;
 using SlackNet.AspNetCore;
 using SlackNet.Events;
 using SlackNet.WebApi;
+using System.Diagnostics;
 
 namespace DotNetClaw;
 
@@ -19,6 +20,12 @@ public sealed class SlackMessageHandler(
 
     public async Task Handle(MessageEvent e)
     {
+        using var activity = ClawTelemetry.ActivitySource.StartActivity("slack.dm", ActivityKind.Consumer);
+        activity?.SetTag("channel.type", "slack");
+        activity?.SetTag("event.type", "dm");
+        activity?.SetTag("slack.user", e.User);
+        activity?.SetTag("slack.channel", e.Channel);
+
         if (e.ChannelType != "im") return;
         if (!string.IsNullOrEmpty(e.BotId) || e.User == _botUserId) return;
         if (string.IsNullOrWhiteSpace(e.Text)) return;
@@ -41,10 +48,19 @@ public sealed class SlackMessageHandler(
             Text    = TruncateSlack(reply),
             ThreadTs = e.Ts
         });
+
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        activity?.SetTag("response.length", reply.Length);
     }
 
     public async Task Handle(AppMention e)
     {
+        using var activity = ClawTelemetry.ActivitySource.StartActivity("slack.mention", ActivityKind.Consumer);
+        activity?.SetTag("channel.type", "slack");
+        activity?.SetTag("event.type", "mention");
+        activity?.SetTag("slack.user", e.User);
+        activity?.SetTag("slack.channel", e.Channel);
+
         logger.LogInformation("[Slack] AppMention: User={User}, Channel={Channel}", e.User, e.Channel);
 
         if (string.IsNullOrWhiteSpace(e.Text)) return;
@@ -71,6 +87,9 @@ public sealed class SlackMessageHandler(
             Text     = TruncateSlack(reply),
             ThreadTs = replyThread
         });
+
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        activity?.SetTag("response.length", reply.Length);
     }
 
     private bool IsAllowed(string userId)

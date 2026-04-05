@@ -11,6 +11,7 @@ var coffeeshop = builder
 var app = builder.AddProject<Projects.DotNetClaw>("dotnetclaw")
     .WithEnvironment("CoffeeshopCli__Mode", "mcp") // cli or mcp
     .WithEnvironment("Ollama__Enabled", "false")
+    .WithEnvironment("Copilot__GitHubToken", builder.Configuration["Copilot:GitHubToken"] ?? "")
     .WaitFor(coffeeshop)
     ;
 

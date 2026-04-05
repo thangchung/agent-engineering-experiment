@@ -1,0 +1,40 @@
+services:
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    environment:
+      Dashboard__Frontend__AuthMode: Unsecured
+    ports:
+      - "18888:18888"
+      - "18889:18889"
+      - "18890:18890"
+
+  coffeeshop-cli:
+    build:
+      context: ../coffeeshop-cli
+    environment:
+      Hosting__EnableHttpMcpBridge: "true"
+      OTEL_SERVICE_NAME: coffeeshop-cli
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "8081:8080"
+
+  dotnetclaw:
+    build:
+      context: .
+      dockerfile: DotNetClaw/Dockerfile
+    depends_on:
+      - aspire-dashboard
+      - coffeeshop-cli
+    environment:
+      Copilot__GitHubToken: ${COPILOT_GITHUB_TOKEN}
+      CoffeeshopCli__Mode: mcp
+      CoffeeshopCli__Mcp__BaseUrl: http://coffeeshop-cli:8080
+      Slack__BotToken: ${SLACK_BOT_TOKEN:-}
+      Slack__AppToken: ${SLACK_APP_TOKEN:-}
+      Slack__BotUserId: ${SLACK_BOT_USER_ID:-}
+      OTEL_SERVICE_NAME: dotnetclaw
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "8080:8080"
