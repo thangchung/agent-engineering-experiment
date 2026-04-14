@@ -1,3 +1,6 @@
 {
-  "appHostPath": "../src/AppHost/AppHost.csproj"
+  "appHostPath": "../src/AppHost/AppHost.csproj",
+  "appHost": {
+    "language": "csharp"
+  }
 }

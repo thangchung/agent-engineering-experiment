@@ -29,9 +29,13 @@
 			"url": "https://mcp.deepwiki.com/mcp",
 			"type": "http"
 		},
-		"excalidraw": {
-			"url": "https://mcp.excalidraw.com",
-			"type": "http"
-		}
+		// "excalidraw": {
+		// 	"url": "https://mcp.excalidraw.com",
+		// 	"type": "http"
+		// },
+		// "drawio": {
+		// 	"url": "https://mcp.draw.io/mcp",
+		// 	"type": "http"
+		// }
 	}
 }
