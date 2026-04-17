@@ -216,7 +216,6 @@ static async Task RunCliModeAsync(IServiceCollection services, string[] args)
             tools.AddCommand<ToolsShowCommand>("show");
         });
         config.AddCommand<QueryCommand>("query");
-        config.AddCommand<ServeCommand>("serve");
     });
 
     ToolServiceProvider.Root = registrar.GetServiceProvider();

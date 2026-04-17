@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dotnetclaw
+  namespace: dotnetclaw
+spec:
+  selector:
+    app: dotnetclaw
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coffeeshop-cli
+  namespace: dotnetclaw
+spec:
+  selector:
+    app: dotnetclaw
+  ports:
+    - name: mcp
+      port: 8080
+      targetPort: mcp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aspire-dashboard
+  namespace: dotnetclaw
+spec:
+  selector:
+    app: aspire-dashboard
+  ports:
+    - name: ui
+      port: 18888
+      targetPort: 18888
+    - name: otlp-grpc
+      port: 18889
+      targetPort: 18889
+    - name: otlp-http
+      port: 18890
+      targetPort: 18890

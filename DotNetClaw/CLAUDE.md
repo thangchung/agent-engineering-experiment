@@ -189,8 +189,11 @@ Non-secret values live in `appsettings.json`. Secrets via `dotnet user-secrets`.
 
 | Key | Where |
 |---|---|
+| `Agent:Provider` | appsettings (`"copilot"` or `"foundry"`) — selects the LLM backend |
 | `Mind:Path` | appsettings (`"./mind"`) |
 | `Copilot:Model` | appsettings (`"claude-sonnet-4-5"`) — note: model selection requires `SessionConfig` overload of `AsAIAgent`; current code uses instruction overload |
+| `Foundry:Endpoint` | appsettings (Azure AI Foundry project endpoint, required when provider = `"foundry"`) |
+| `Foundry:Model` | appsettings (`"gpt-5.4-mini"`) — deployment name in the Foundry project |
 | `Slack:BotToken`, `Slack:SigningSecret`, `Slack:BotUserId` | user-secrets |
 | `Slack:Policy` | appsettings (`"open"` or `"allowlist"`) |
 | `Slack:AllowedUserIds` | appsettings (comma-separated, only used when policy = `"allowlist"`) |

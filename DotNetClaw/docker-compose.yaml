@@ -27,7 +27,18 @@ services:
       - aspire-dashboard
       - coffeeshop-cli
     environment:
-      Copilot__GitHubToken: ${COPILOT_GITHUB_TOKEN}
+      # ── Provider selection ──
+      Agent__Provider: ${AGENT_PROVIDER:-copilot}
+      # ── Copilot provider ──
+      Copilot__GitHubToken: ${COPILOT_GITHUB_TOKEN:-}
+      # ── Foundry provider ──
+      Foundry__Endpoint: ${FOUNDRY_ENDPOINT:-}
+      Foundry__Model: ${FOUNDRY_MODEL:-gpt-5.4-mini}
+      # ── Azure auth (service principal — used by DefaultAzureCredential) ──
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      # ── Services ──
       CoffeeshopCli__Mode: mcp
       CoffeeshopCli__Mcp__BaseUrl: http://coffeeshop-cli:8080
       Slack__BotToken: ${SLACK_BOT_TOKEN:-}
@@ -36,5 +47,8 @@ services:
       OTEL_SERVICE_NAME: dotnetclaw
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    # ── Uncomment to use host Azure CLI credentials instead of service principal ──
+    # volumes:
+    #   - ${HOME}/.azure:/root/.azure:ro
     ports:
       - "8080:8080"

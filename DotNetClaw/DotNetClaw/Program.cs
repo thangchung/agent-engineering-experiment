@@ -1,3 +1,5 @@
+using Azure.AI.Projects;
+using Azure.Identity;
 using DotNetClaw;
 using GitHub.Copilot.SDK;
 using Microsoft.Agents.AI;
@@ -60,21 +62,8 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     string skillAdvertisement = "";
     try
     {
-        // Regex avoids strict JSON parse — coffeeshop-cli output may contain literal newlines
-        var skillNames = new List<string>();
-        var regex = new System.Text.RegularExpressions.Regex(@"""name"":\s*""([^""]+)""");
-        var matches = regex.Matches(skillsJson);
-        
-        foreach (System.Text.RegularExpressions.Match match in matches)
-        {
-            if (match.Groups.Count > 1)
-            {
-                var name = match.Groups[1].Value;
-                if (!string.IsNullOrEmpty(name))
-                    skillNames.Add(name);
-            }
-        }
-        
+        var skillNames = ExtractSkillNames(skillsJson);
+
         startupLog.LogInformation("[Skills] Discovered {Count} skills: {Names}", 
             skillNames.Count, string.Join(", ", skillNames));
 
@@ -120,7 +109,32 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     startupLog.LogInformation("[Agent] Total tools: {Count}", tools.Count);
 
     var functionTools = tools.OfType<AIFunction>().ToList();
+    var instructions  = systemMessage + skillAdvertisement;
+    var provider      = config["Agent:Provider"] ?? "copilot";
 
+    startupLog.LogInformation("[Agent] Provider: {Provider}", provider);
+
+    // ── Foundry provider ────────────────────────────────────────
+    if (string.Equals(provider, "foundry", StringComparison.OrdinalIgnoreCase))
+    {
+        var endpoint = config["Foundry:Endpoint"]
+            ?? throw new InvalidOperationException("Foundry:Endpoint is required when Agent:Provider is 'foundry'.");
+        var model = config["Foundry:Model"] ?? "gpt-5.4-mini";
+
+        if (ollamaEnabled)
+            startupLog.LogWarning("[Agent] Ollama settings are ignored when using the Foundry provider.");
+
+        startupLog.LogInformation("[Agent] Foundry mode: model={Model} endpoint={Endpoint}", model, endpoint);
+
+        var aiProjectClient = new AIProjectClient(new Uri(endpoint), new DefaultAzureCredential());
+        return aiProjectClient.AsAIAgent(
+            model:        model,
+            instructions: instructions,
+            name:         "DotNetClaw",
+            tools:        tools);
+    }
+
+    // ── Copilot provider (default) ──────────────────────────────
     var gitHubToken = config["Copilot:GitHubToken"];
     var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
     var isLocal = hostEnvironment.IsDevelopment();
@@ -148,42 +162,27 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     var copilotClient = new CopilotClient(copilotOptions);
 
     if (ollamaEnabled)
-    {
         startupLog.LogInformation("[Agent] Ollama mode: model={Model} baseUrl={BaseUrl}", ollamaModel, ollamaBaseUrl);
-        var ollamaSessionConfig = new SessionConfig
-        {
-            Provider = new ProviderConfig { Type = "openai", BaseUrl = ollamaBaseUrl },
-            Model    = ollamaModel,
-            SystemMessage = new SystemMessageConfig
-            {
-                Mode    = SystemMessageMode.Replace,
-                Content = systemMessage + skillAdvertisement,
-            },
-            Tools = functionTools,
-            // approve all tool calls — MAF handles tool security at the channel layer
-            OnPermissionRequest = PermissionHandler.ApproveAll,
-        };
-        return copilotClient.AsAIAgent(
-            sessionConfig: ollamaSessionConfig,
-            ownsClient:    true,
-            id:            "dotnetclaw",
-            name:          "DotNetClaw",
-            description:   "Personal AI assistant");
-    }
 
-    var defaultSessionConfig = new SessionConfig
+    var sessionConfig = new SessionConfig
     {
         SystemMessage = new SystemMessageConfig
         {
             Mode    = SystemMessageMode.Replace,
-            Content = systemMessage + skillAdvertisement,
+            Content = instructions,
         },
         Tools = functionTools,
         OnPermissionRequest = PermissionHandler.ApproveAll,
     };
 
+    if (ollamaEnabled)
+    {
+        sessionConfig.Provider = new ProviderConfig { Type = "openai", BaseUrl = ollamaBaseUrl };
+        sessionConfig.Model    = ollamaModel;
+    }
+
     return copilotClient.AsAIAgent(
-        sessionConfig: defaultSessionConfig,
+        sessionConfig: sessionConfig,
         ownsClient:    true,
         id:            "dotnetclaw",
         name:          "DotNetClaw",
@@ -226,5 +225,44 @@ static bool HasTopLevelError(string payload)
     catch
     {
         return true;
+    }
+}
+
+static List<string> ExtractSkillNames(string payload)
+{
+    var skillNames = new List<string>();
+
+    if (string.IsNullOrWhiteSpace(payload))
+        return skillNames;
+
+    using var skillDoc = System.Text.Json.JsonDocument.Parse(payload);
+    var root = skillDoc.RootElement;
+
+    if (root.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        AddSkillNamesFromArray(root, skillNames);
+        return skillNames;
+    }
+
+    if (root.ValueKind == System.Text.Json.JsonValueKind.Object &&
+        root.TryGetProperty("skills", out var skillsElement) &&
+        skillsElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        AddSkillNamesFromArray(skillsElement, skillNames);
+    }
+
+    return skillNames;
+}
+
+static void AddSkillNamesFromArray(System.Text.Json.JsonElement skillsArray, List<string> skillNames)
+{
+    foreach (var item in skillsArray.EnumerateArray())
+    {
+        if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+        if (!item.TryGetProperty("name", out var nameProp)) continue;
+
+        var name = nameProp.GetString();
+        if (!string.IsNullOrEmpty(name))
+            skillNames.Add(name);
     }
 }

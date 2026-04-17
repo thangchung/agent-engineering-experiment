@@ -1,4 +1,4 @@
-# MCP Experiments Sequence Diagrams
+# MCP Experiments
 
 ## MCP Traditional Flow
 
@@ -25,6 +25,19 @@ sequenceDiagram
     Client->>Server: tools/list
     Server-->>Client: Updated tools
 ```
+
+## MCP problems
+### Performance and Practical Limitations
+- **Context Window Bloat**: Active MCP servers consume large amounts of tokens to describe their capabilities to the LLM, reducing performance and increasing costs.
+- Operational Complexity: Managing multiple, concurrent local servers is difficult, often leading to debugging challenges and high "context rot".
+### Security Vulnerabilities
+- Data Leakage/Exfiltration: Malicious or poorly configured servers can steal or leak sensitive data to third parties.
+- Remote Code Execution (RCE): Unauthenticated users can run arbitrary commands on machines hosting improperly secured MCP servers.
+- Tool Poisoning/Injection: Malicious instructions can be hidden in tool descriptions, manipulating AI agents into taking unauthorized actions (e.g., reading/exfiltrating private files).
+- Excessive Permissions/Credential Theft: MCP servers often access more data than necessary and can steal API keys or passwords.
+- Broken Authentication/Authorization: The protocol lacks strong, built-in security standards, relying on often-weak, inconsistent implementations.
+
+
 
 ## 1) OpenAPI Specs Load at Startup
 
@@ -141,3 +154,22 @@ sequenceDiagram
     Exec-->>CM: ExecuteResponse(finalValue)
     CM-->>LLM: finalValue
 ```
+
+## MCP - roadmap 2026
+
+**MCP Creator Reveals the 2026 Roadmap for AI Agents** by **David Soria Parra**: https://youtu.be/kAVRFYgCPg0?si=467OYBqrZPErmKbj
+
+### Progressive discovery
+
+![](assets/mcp_progressive_discovery.PNG)
+Ref: https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1821
+
+### Composability via code
+
+![](assets/mcp_composable_code.PNG)
+
+## References
+- https://www.anthropic.com/engineering/code-execution-with-mcp
+- https://www.anthropic.com/engineering/advanced-tool-use
+- https://nx.dev/blog/why-we-deleted-most-of-our-mcp-tools
+- https://docs.spring.io/spring-ai/reference/2.0/guides/dynamic-tool-search.html

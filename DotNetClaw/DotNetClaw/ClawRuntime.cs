@@ -21,23 +21,9 @@ namespace DotNetClaw;
 public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
 {
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
-    private readonly bool _ollamaEnabled = false;
-    private readonly string _ollamaModel = "(default)";
-    private readonly string _ollamaBaseUrl = "(default)";
     // Per-session semaphore: prevents two concurrent requests on the same AgentSession
     // (AgentSession is not thread-safe; concurrent calls produce interleaved/garbled output)
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
-
-    public ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger, IConfiguration config) : this(agent, logger)
-    {
-        _ollamaEnabled = config["Ollama:Enabled"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
-        
-        if (_ollamaEnabled)
-        {
-            _ollamaModel = config["Ollama:Model"] ?? "(default)";
-            _ollamaBaseUrl = config["Ollama:BaseUrl"] ?? "(default)";
-        }
-    }
 
     /// <summary>Streaming variant — yields response text chunks as they arrive.</summary>
     public async IAsyncEnumerable<string> HandleStreamingAsync(
@@ -59,16 +45,11 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
         activity?.SetTag("session.is_new", isNewSession);
         activity?.SetTag("channel", channel);
         activity?.SetTag("message.length", message.Length);
-        activity?.SetTag("runtime.mode", _ollamaEnabled ? "ollama" : "copilot-default");
 
         await sem.WaitAsync(ct);
+        var succeeded = false;
         try
         {
-            logger.LogInformation(
-                "[Agent] Runtime mode={Mode} model={Model} baseUrl={BaseUrl}",
-                _ollamaEnabled ? "ollama" : "copilot-default",
-                _ollamaModel,
-                _ollamaBaseUrl);
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
             var chunkCount = 0;
@@ -90,9 +71,17 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
             ClawTelemetry.ResponseLengthChars.Record(totalResponseChars,
                 new KeyValuePair<string, object?>("channel", channel),
                 new KeyValuePair<string, object?>("streaming", true));
+            succeeded = true;
         }
         finally
         {
+            if (!succeeded)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error);
+                ClawTelemetry.ErrorsTotal.Add(1,
+                    new KeyValuePair<string, object?>("channel", channel),
+                    new KeyValuePair<string, object?>("streaming", true));
+            }
             sem.Release();
             var elapsedMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             ClawTelemetry.RequestDurationMs.Record(elapsedMs,
@@ -121,16 +110,10 @@ public sealed class ClawRuntime(AIAgent agent, ILogger<ClawRuntime> logger)
         activity?.SetTag("session.is_new", isNewSession);
         activity?.SetTag("channel", channel);
         activity?.SetTag("message.length", message.Length);
-        activity?.SetTag("runtime.mode", _ollamaEnabled ? "ollama" : "copilot-default");
 
         await sem.WaitAsync(ct);
         try
         {
-            logger.LogInformation(
-                "[Agent] Runtime mode={Mode} model={Model} baseUrl={BaseUrl}",
-                _ollamaEnabled ? "ollama" : "copilot-default",
-                _ollamaModel,
-                _ollamaBaseUrl);
             logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
 
             var sb = new System.Text.StringBuilder();

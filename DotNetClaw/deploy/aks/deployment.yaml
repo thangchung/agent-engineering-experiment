@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dotnetclaw
+  namespace: dotnetclaw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dotnetclaw
+  template:
+    metadata:
+      labels:
+        app: dotnetclaw
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: dotnetclaw-foundry
+      containers:
+        - name: dotnetclaw
+          image: <ACR_NAME>.azurecr.io/dotnetclaw:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: Agent__Provider
+              value: "foundry"
+            - name: Foundry__Endpoint
+              value: "<FOUNDRY_ENDPOINT>"
+            - name: Foundry__Model
+              value: "<FOUNDRY_MODEL>"
+            - name: CoffeeshopCli__Mode
+              value: "mcp"
+            - name: CoffeeshopCli__Mcp__BaseUrl
+              value: "http://coffeeshop-cli:8080"
+            - name: Slack__BotToken
+              valueFrom:
+                secretKeyRef:
+                  name: slack-secret
+                  key: bot-token
+            - name: Slack__AppToken
+              valueFrom:
+                secretKeyRef:
+                  name: slack-secret
+                  key: app-token
+            - name: Slack__BotUserId
+              valueFrom:
+                secretKeyRef:
+                  name: slack-secret
+                  key: bot-user-id
+            - name: OTEL_SERVICE_NAME
+              value: dotnetclaw
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://aspire-dashboard:18889
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+        - name: coffeeshop-cli
+          image: <ACR_NAME>.azurecr.io/coffeeshop-cli:latest
+          ports:
+            - containerPort: 8080
+              name: mcp
+          env:
+            - name: Hosting__EnableHttpMcpBridge
+              value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dotnetclaw-foundry
+  namespace: dotnetclaw
+  annotations:
+    azure.workload.identity/client-id: <USER_ASSIGNED_MANAGED_IDENTITY_CLIENT_ID>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aspire-dashboard
+  namespace: dotnetclaw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aspire-dashboard
+  template:
+    metadata:
+      labels:
+        app: aspire-dashboard
+    spec:
+      containers:
+        - name: aspire-dashboard
+          image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: Dashboard__Frontend__AuthMode
+              value: Unsecured
+          ports:
+            - name: ui
+              containerPort: 18888
+            - name: otlp-grpc
+              containerPort: 18889
+            - name: otlp-http
+              containerPort: 18890
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

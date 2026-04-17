@@ -8,8 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.AI.Projects" Version="2.*" />
+    <PackageReference Include="Azure.Identity" Version="1.*" />
     <PackageReference Include="GitHub.Copilot.SDK" Version="0.2.1" />
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.1.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Foundry" Version="1.1.0" />
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260402.1" />
     <PackageReference Include="ModelContextProtocol" Version="1.1.0" />
     <PackageReference Include="SlackNet" Version="0.17.9" />

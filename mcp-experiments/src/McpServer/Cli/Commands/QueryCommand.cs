@@ -21,12 +21,8 @@ internal sealed class QueryCommand(
     /// </summary>
     internal sealed class Settings : VerboseCommandSettings
     {
-        [CommandArgument(0, "[intent]")]
-        [Description("Deprecated: intent mode is disabled in CLI.")]
-        public string? Intent { get; init; }
-
         [CommandOption("--tool <NAME>")]
-        [Description("Tool name to invoke (required)")]
+        [Description("Tool name to invoke")]
         public string? ToolName { get; init; }
 
         [CommandOption("--args <JSON>")]
@@ -43,14 +39,9 @@ internal sealed class QueryCommand(
     {
         try
         {
-            if (!string.IsNullOrWhiteSpace(settings.Intent))
-            {
-                throw new ArgumentException("CLI query intent mode is disabled. Use --tool <name> and optional --args <json>.");
-            }
-
             if (string.IsNullOrWhiteSpace(settings.ToolName))
             {
-                throw new ArgumentException("CLI query intent mode is disabled. Provide --tool <name> and optional --args <json>.");
+                throw new ArgumentException("Provide --tool <name> and optional --args <json>.");
             }
 
             string argsJson = string.IsNullOrWhiteSpace(settings.ArgsJson) ? "{}" : settings.ArgsJson;

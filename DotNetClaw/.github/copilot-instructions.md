@@ -78,7 +78,10 @@ SlackChannel.cs    WebChannel.cs
 |---|---|---|
 | `GitHub.Copilot.SDK` | 0.2.1 | CopilotClient → copilot-cli subprocess |
 | `Microsoft.Agents.AI` | 1.0.0 | AIAgent, AgentSession, RunStreamingAsync |
-| `Microsoft.Agents.AI.GitHub.Copilot` | 1.0.0-preview.260402.1 | `AsAIAgent()` bridge extension |
+| `Microsoft.Agents.AI.Foundry` | 1.1.0 | `AIProjectClient.AsAIAgent()` bridge for Azure AI Foundry |
+| `Microsoft.Agents.AI.GitHub.Copilot` | 1.0.0-preview.260402.1 | `CopilotClient.AsAIAgent()` bridge for GitHub Copilot |
+| `Azure.AI.Projects` | latest | AIProjectClient for Azure AI Foundry |
+| `Azure.Identity` | latest | DefaultAzureCredential for Azure auth |
 | `ModelContextProtocol` | 1.1.0 | MCP client for coffeeshop-cli bridge |
 | `SlackNet` / `SlackNet.AspNetCore` | 0.17.9 | Slack Socket Mode |
 
@@ -104,8 +107,10 @@ Non-secret values in `appsettings.json`. Secrets via `dotnet user-secrets`.
 
 | Key | Purpose |
 |---|---|
+| `Agent:Provider` | `"copilot"` (default) or `"foundry"` — selects the LLM backend |
 | `Mind:Path` | Path to mind directory (default `./mind`) |
-| `Ollama:Enabled` / `Ollama:BaseUrl` / `Ollama:Model` | Optional local LLM override |
+| `Foundry:Endpoint` / `Foundry:Model` | Azure AI Foundry project endpoint and model deployment (required when provider = `"foundry"`) |
+| `Ollama:Enabled` / `Ollama:BaseUrl` / `Ollama:Model` | Optional local LLM override (Copilot provider only) |
 | `Slack:BotToken` / `Slack:AppToken` / `Slack:BotUserId` | Slack credentials (user-secrets) |
 | `Slack:Policy` / `Slack:AllowedUserIds` | `"open"` or `"allowlist"` with comma-separated IDs |
 | `CoffeeshopCli:Mode` | `"cli"` (direct exec) or `"mcp"` (HTTP MCP bridge) |
