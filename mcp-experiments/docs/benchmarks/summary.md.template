@@ -1,0 +1,32 @@
+# Benchmark Report Template
+
+## Summary
+
+Generated: `<timestamp>`
+
+| Runner | Simple A (ms) | Simple B (ms) | Complex A (ms) | Complex B (ms) |
+|--------|---|---|---|---|
+| local | - | n/a | - | n/a |
+| hyperlight | - | - | - | - |
+| opensandbox | - | n/a | - | n/a |
+
+## Ratios (vs local baseline)
+
+### Style A (requests shim, all runners)
+- hyperlight: `<ratio>`x
+- opensandbox: `<ratio>`x
+
+### Style B (http_get native, hyperlight only)
+- hyperlight: `<ratio>`x vs local style A
+
+## Shim Tax (hyperlight only)
+- Style A (requests) → Style B (http_get): `<delta>`% savings
+
+## Isolation Tax (opensandbox vs local)
+- Complex workload: `<delta>`x overhead
+
+## Notes
+- Workloads: W_simple = single `/breweries/random`, W_complex = paginated SD + moon search
+- Stub server: 127.0.0.1:5555 deterministic responses
+- Cold boot: separate benchmark class tracks runner initialization cost
+- Memory: collected via MemoryDiagnoser (private + GC retained)

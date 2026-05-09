@@ -26,6 +26,74 @@ dotnet run --project src/McpServer/McpServer.csproj
 
 The current server prints a startup smoke output for registry/search/execute wiring.
 
+## Run Benchmarks
+
+### Quick Start (Local Runner Only)
+
+```bash
+pwsh scripts/run-benchmarks.ps1 -Runners local
+```
+
+### Start OpenSandbox for Benchmarks
+
+**Option 1: Docker Compose (Simplest)**
+
+```bash
+docker-compose up -d opensandbox-server
+```
+
+Verify endpoint ready:
+```bash
+Test-Connection localhost -TcpPort 8080
+# or: curl http://localhost:8080/health
+```
+
+Then run benchmarks with opensandbox:
+```bash
+pwsh scripts/run-benchmarks.ps1 -Runners opensandbox
+```
+
+Stop when done:
+```bash
+docker-compose down
+```
+
+**Option 2: Aspire AppHost (Full Stack)**
+
+```bash
+dotnet run --project src/AppHost/AppHost.csproj
+```
+
+In another terminal:
+```bash
+pwsh scripts/run-benchmarks.ps1 -Runners opensandbox
+```
+
+### Benchmark Runner Options
+
+```bash
+# local only
+pwsh scripts/run-benchmarks.ps1 -Runners local
+
+# local + hyperlight
+pwsh scripts/run-benchmarks.ps1 -Runners local,hyperlight
+
+# opensandbox (requires endpoint running; see above)
+pwsh scripts/run-benchmarks.ps1 -Runners opensandbox
+```
+
+### Output
+
+- Timestamped folder: `docs/benchmarks/<yyyyMMdd_HHmmss>/`
+- Consolidated report: `docs/benchmarks/<timestamp>/summary.md`
+- Per-runner logs: `docs/benchmarks/<timestamp>/bench-<runner>.log`
+- Per-runner metrics: `docs/benchmarks/<timestamp>/metrics-<runner>/`
+
+### Local Runner Python
+
+- Requires Python 3.6+ in PATH: `python3`, `python`, or `py`
+- Override: `$env:MCP_PYTHON = "C:\path\to\python.exe"`
+
 ### CLI Query Mode
 
 In CLI mode, `query` is explicit tool invocation only. Natural-language intent routing inside CLI is disabled.

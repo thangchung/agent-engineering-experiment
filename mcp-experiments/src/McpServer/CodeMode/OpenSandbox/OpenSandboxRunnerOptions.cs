@@ -56,4 +56,9 @@ public sealed class OpenSandboxRunnerOptions
     /// Maximum tool calls allowed in one Execute block.
     /// </summary>
     public int MaxToolCalls { get; init; } = 10;
+    
+    /// <summary>
+    /// Allowed API base URLs discovered from OpenAPI sources.
+    /// </summary>
+    public IReadOnlyList<string>? AllowedBaseUrls { get; init; }
 }

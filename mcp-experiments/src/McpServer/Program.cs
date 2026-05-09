@@ -6,6 +6,7 @@ using McpServer.Cli.Infrastructure;
 using McpServer;
 using McpServer.Bootstrap;
 using McpServer.CodeMode;
+using McpServer.CodeMode.Validation;
 using McpServer.OpenApi;
 using McpServer.Registry;
 using McpServer.Search;
@@ -31,6 +32,10 @@ if (cliConfig.EnableCliMode && !cliVerbose)
 }
 
 builder.AddServiceDefaults();
+
+CopilotAuthOptions copilotAuthOptions = builder.Configuration.GetSection("Copilot:Auth").Get<CopilotAuthOptions>() ?? new CopilotAuthOptions();
+CopilotProviderOptions copilotProviderOptions = builder.Configuration.GetSection("Copilot:Provider").Get<CopilotProviderOptions>() ?? new CopilotProviderOptions();
+PreflightOptions preflightOptions = builder.Configuration.GetSection("CodeMode:Preflight").Get<PreflightOptions>() ?? new PreflightOptions();
 
 // OpenAPI-generated handlers use the default HTTP client and resolve the base URL
 // from OpenAPI servers or configuration override.
@@ -69,6 +74,12 @@ builder.Services.AddSingleton<IToolSearcher, WeightedToolSearcher>();
 builder.Services.AddSingleton<MetaTools>();
 builder.Services.AddSingleton<ToolInvoker>();
 builder.Services.AddSingleton<DiscoveryTools>();
+builder.Services.AddSingleton(copilotAuthOptions);
+builder.Services.AddSingleton(copilotProviderOptions);
+builder.Services.AddSingleton(preflightOptions);
+builder.Services.AddSingleton<IPythonSyntaxValidator>(sp => preflightOptions.Enabled
+    ? new AstParseSyntaxValidator(preflightOptions, sp.GetRequiredService<ILogger<AstParseSyntaxValidator>>())
+    : new NullSyntaxValidator());
 // Runtime selection defaults to local constrained execution.
 // Set CodeMode:Runner=opensandbox and OpenSandbox:* settings to enable OpenSandbox-backed preflight.
 builder.Services.AddSingleton<ISandboxRunner>(sp =>
@@ -96,6 +107,9 @@ builder.Services
     .WithToolsFromAssembly();
 
 WebApplication app = builder.Build();
+
+// Log startup configuration
+LogStartupConfig(app.Logger, builder.Configuration);
 
 HashSet<string> exposedMcpToolNames = McpHandlerCatalog.GetExposedToolNames();
 
@@ -222,4 +236,46 @@ static async Task RunCliModeAsync(IServiceCollection services, string[] args)
 
     string[] effectiveArgs = args.Length == 0 ? ["--help"] : args;
     await app.RunAsync(effectiveArgs);
+}
+
+static void LogStartupConfig(ILogger logger, IConfiguration config)
+{
+    logger.LogInformation("=== MCP Server Startup Configuration ===");
+    
+    // Hosting
+    var hosting = config.GetSection("Hosting");
+    logger.LogInformation("Hosting:EnableCliMode = {Value}", hosting["EnableCliMode"] ?? "false");
+    logger.LogInformation("Hosting:EnableStatistic = {Value}", hosting["EnableStatistic"] ?? "false");
+    logger.LogInformation("Hosting:CliServeMode = {Value}", hosting["CliServeMode"] ?? "false");
+    
+    // CodeMode
+    var codeMode = config.GetSection("CodeMode");
+    logger.LogInformation("CodeMode:Runner = {Value}", codeMode["Runner"] ?? "local");
+    logger.LogInformation("CodeMode:TimeoutMs = {Value}", codeMode["TimeoutMs"] ?? "5000");
+    logger.LogInformation("CodeMode:MaxToolCalls = {Value}", codeMode["MaxToolCalls"] ?? "10");
+    
+    // CodeMode Preflight
+    var preflight = config.GetSection("CodeMode:Preflight");
+    logger.LogInformation("CodeMode:Preflight:Enabled = {Value}", preflight["Enabled"] ?? "false");
+    logger.LogInformation("CodeMode:Preflight:PythonPath = {Value}", preflight["PythonPath"] ?? "python");
+    
+    // OpenSandbox (if Runner is opensandbox)
+    if (string.Equals(codeMode["Runner"], "opensandbox", StringComparison.OrdinalIgnoreCase))
+    {
+        var sandbox = config.GetSection("OpenSandbox");
+        logger.LogInformation("OpenSandbox:Domain = {Value}", sandbox["Domain"] ?? "localhost:8080");
+        logger.LogInformation("OpenSandbox:Image = {Value}", sandbox["Image"] ?? "python:3.12-slim");
+        logger.LogInformation("OpenSandbox:TimeoutSeconds = {Value}", sandbox["TimeoutSeconds"] ?? "300");
+    }
+    
+    // Copilot Auth
+    var copilotAuth = config.GetSection("Copilot:Auth");
+    logger.LogInformation("Copilot:Auth:Type = {Value}", copilotAuth["Type"] ?? "github");
+    
+    // Copilot Provider
+    var copilotProvider = config.GetSection("Copilot:Provider");
+    logger.LogInformation("Copilot:Provider:Type = {Value}", copilotProvider["Type"] ?? "openai");
+    logger.LogInformation("Copilot:Provider:WireApi = {Value}", copilotProvider["WireApi"] ?? "completions");
+    
+    logger.LogInformation("=========================================");
 }
