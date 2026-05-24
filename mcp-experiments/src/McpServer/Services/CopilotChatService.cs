@@ -105,6 +105,8 @@ User refers to a tool or endpoint that cannot be found.
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string model;
+    private readonly CopilotAuthOptions authOptions;
+    private readonly CopilotProviderOptions providerOptions;
     private readonly string? gitHubToken;
     private readonly string mcpEndpoint;
     private readonly string mcpServerName;
@@ -116,9 +118,15 @@ User refers to a tool or endpoint that cannot be found.
     private CopilotClient? client;
     private CopilotSession? session;
 
-    public CopilotChatService(IConfiguration configuration, ILogger<CopilotChatService> logger)
+    public CopilotChatService(
+        IConfiguration configuration,
+        CopilotAuthOptions authOptions,
+        CopilotProviderOptions providerOptions,
+        ILogger<CopilotChatService> logger)
     {
         model = configuration["Copilot:Model"] ?? "gpt-5";
+        this.authOptions = authOptions;
+        this.providerOptions = providerOptions;
         gitHubToken = configuration["Copilot:GitHubToken"];
         mcpEndpoint = configuration["Mcp:Endpoint"] ?? "http://localhost:5100/mcp";
         mcpServerName = configuration["Copilot:McpServerName"] ?? "mcp-experiments";
@@ -287,29 +295,32 @@ User refers to a tool or endpoint that cannot be found.
             {
                 CopilotClientOptions options = new()
                 {
-                    GitHubToken = gitHubToken,
-                    UseLoggedInUser = string.IsNullOrWhiteSpace(gitHubToken),
+                    GitHubToken = IsGitHubAuth() ? gitHubToken : null,
+                    UseLoggedInUser = IsGitHubAuth() && string.IsNullOrWhiteSpace(gitHubToken),
                 };
 
                 client = new CopilotClient(options);
                 await client.StartAsync(cancellationToken);
 
-                ValidateConfiguredToken(gitHubToken);
+                if (IsGitHubAuth())
+                {
+                    ValidateConfiguredToken(gitHubToken);
 
-                GetAuthStatusResponse authStatus = await client.GetAuthStatusAsync(cancellationToken);
-                if (!authStatus.IsAuthenticated)
-                {
-                    throw new InvalidOperationException(
-                        "Copilot CLI is not authenticated. Configure a supported token (gho_, ghu_, or github_pat_) or enable logged-in user authentication.");
-                }
+                    GetAuthStatusResponse authStatus = await client.GetAuthStatusAsync(cancellationToken);
+                    if (!authStatus.IsAuthenticated)
+                    {
+                        throw new InvalidOperationException(
+                            "Copilot CLI is not authenticated. Configure a supported token (gho_, ghu_, or github_pat_) or enable logged-in user authentication.");
+                    }
 
-                try
-                {
-                    await client.ListModelsAsync(cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException(BuildModelDiscoveryErrorMessage(ex), ex);
+                    try
+                    {
+                        await client.ListModelsAsync(cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException(BuildModelDiscoveryErrorMessage(ex), ex);
+                    }
                 }
             }
 
@@ -324,6 +335,11 @@ User refers to a tool or endpoint that cannot be found.
                 },
                 McpServers = BuildMcpServerConfig(),
             };
+
+            if (IsByokAuth())
+            {
+                config.Provider = CopilotProviderFactory.Create(providerOptions);
+            }
 
             session = await client.CreateSessionAsync(config, cancellationToken);
         }
@@ -390,6 +406,16 @@ User refers to a tool or endpoint that cannot be found.
             throw new InvalidOperationException(
                 "Copilot:GitHubToken is a classic personal access token (ghp_), which the GitHub Copilot SDK does not support. Use a gho_, ghu_, or github_pat_ token instead.");
         }
+    }
+
+    private bool IsGitHubAuth()
+    {
+        return string.Equals(authOptions.Type, "github", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsByokAuth()
+    {
+        return string.Equals(authOptions.Type, "byok", StringComparison.OrdinalIgnoreCase);
     }
 
     private string BuildModelDiscoveryErrorMessage(Exception ex)

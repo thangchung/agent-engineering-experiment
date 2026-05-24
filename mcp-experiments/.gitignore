@@ -9,3 +9,8 @@ obj/
 **/*/secret.yaml
 data-protection-keys/
 .idea/
+
+appsettings.Development.json
+.artifacts/
+!docs/benchmarks/summary.md.template
+BenchmarkDotNet.Artifacts/

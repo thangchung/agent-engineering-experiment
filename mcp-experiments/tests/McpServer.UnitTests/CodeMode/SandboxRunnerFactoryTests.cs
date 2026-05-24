@@ -1,15 +1,17 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using McpServer.CodeMode;
+using McpServer.CodeMode.Hyperlight;
 using McpServer.CodeMode.Local;
 using McpServer.CodeMode.OpenSandbox;
+using System.Reflection;
 
 namespace McpServer.UnitTests.CodeMode;
 
 public sealed class SandboxRunnerFactoryTests
 {
     [Fact]
-    public void Create_LocalRunnerSelectedByDefault()
+    public void Create_HyperlightRunnerSelectedByDefault()
     {
         IConfiguration configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
@@ -17,7 +19,7 @@ public sealed class SandboxRunnerFactoryTests
 
         ISandboxRunner runner = SandboxRunnerFactory.Create(configuration, NullLoggerFactory.Instance);
 
-        Assert.IsType<LocalConstrainedRunner>(runner);
+        Assert.IsType<HyperlightSandboxRunner>(runner);
     }
 
     [Fact]
@@ -49,7 +51,7 @@ public sealed class SandboxRunnerFactoryTests
                 MaxToolCalls = 5,
             },
             NullLoggerFactory.Instance,
-            (_, _) =>
+            remoteExecutor: (_, _) =>
             {
                 remoteCalled = true;
                 return Task.FromResult(new RunnerResult("remote-result", 0));
@@ -78,7 +80,7 @@ public sealed class SandboxRunnerFactoryTests
                 MaxToolCalls = 5,
             },
             NullLoggerFactory.Instance,
-            (code, _) =>
+            remoteExecutor: (code, _) =>
             {
                 remoteCalled = true;
                 codeReceivedBySandbox = code;
@@ -92,5 +94,22 @@ public sealed class SandboxRunnerFactoryTests
         Assert.NotNull(codeReceivedBySandbox);
         Assert.Equal(testCode, codeReceivedBySandbox);
         Assert.Equal("remote-result", result.FinalValue);
+    }
+
+    [Fact]
+    public void OpenSandboxRunner_BuildPythonCommand_UsesFlushLeftHeredocTerminator()
+    {
+        MethodInfo? buildPythonCommand = typeof(OpenSandboxRunner).GetMethod(
+            "BuildPythonCommand",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildPythonCommand);
+
+        string command = Assert.IsType<string>(buildPythonCommand.Invoke(null, ["ZHVtbXk=", "https://example.test/api"]));
+        string normalizedCommand = command.Replace("\r\n", "\n", StringComparison.Ordinal);
+        string[] lines = normalizedCommand.Split('\n');
+
+        Assert.Equal("python3 - <<'PY'", lines[0]);
+        Assert.EndsWith("\nPY\n", normalizedCommand, StringComparison.Ordinal);
     }
 }

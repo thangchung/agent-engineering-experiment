@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Text.Json;
+using McpServer.CodeMode.Validation;
 using McpServer.Registry;
 using Microsoft.AspNetCore.Mvc;
 using ModelContextProtocol.Server;
@@ -131,6 +132,16 @@ public static class CodeModeHandlers
                 response.FinalValue is not null);
 
             return response.FinalValue;
+        }
+        catch (SyntaxValidationException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "[codemode] {HandlerName} failed syntax preflight: {Error}.",
+                nameof(Execute),
+                ex.Message);
+
+            return $"[Execute syntax error] {ex.Message}";
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -2,6 +2,20 @@
 
 This is a .NET/C# MCP server experiment combining three advanced patterns: **tool-search** (dynamic tool discovery), **code-mode** (LLM-driven code execution), and **sandbox** (isolated execution via OpenSandbox). The goal is to explore how these patterns reduce token cost and improve tool-use accuracy for large tool catalogs.
 
+# Principles
+
+- Prefer minimal, surgical changes and avoid broad refactors unless requested.
+- Link to existing docs instead of copying large sections into responses or new files.
+- For third-party API usage, use the get-api-docs skill workflow to fetch current references before coding.
+- KISS/YAGNI/DRY/Boy-Scout principles apply. Implement the simplest thing that could possibly work to explore these patterns. Avoid over-engineering or adding features not required by the core experiments.
+- Apply strict red-green testing for all scenarios affected by a change: write or update a failing test first, implement the smallest fix, then run tests to green.
+
+## Default Communication Mode
+
+- Default to the `caveman` skill for all user-facing responses in this repo.
+- Treat caveman mode as active from session start unless the user explicitly asks for normal mode or more detail.
+- Keep all technical substance; cut filler.
+
 ## Architecture
 
 The server exposes a large set of MCP tools but wraps them with two transforms:
@@ -136,8 +150,3 @@ Environment variables required: `SANDBOX_DOMAIN`, `SANDBOX_API_KEY`.
 - **Sandbox is ephemeral**: create one per `execute` call, kill it when done. Never reuse across requests.
 - **ToolRegistry is the source of truth**: real tools are registered there, not directly with the MCP server.
 - **Always pin tools that need to be visible upfront** (e.g., `help`, `search_tools`) so they appear in `list_tools` without requiring a search step.
-
-# Principles
-
-- KISS/YAGNI/DRY/Boy-Scout principles apply. Implement the simplest thing that could possibly work to explore these patterns. Avoid over-engineering or adding features not required by the core experiments.
-- TDD red-green cycle for all new code. Write tests first, watch them fail, then implement the minimum code to make them pass.

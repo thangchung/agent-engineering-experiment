@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenSandbox;
 using OpenSandbox.Config;
 using OpenSandbox.Core;
@@ -11,10 +12,13 @@ namespace McpServer.CodeMode.OpenSandbox;
 
 /// <summary>
 /// Runner that validates OpenSandbox connectivity, then executes constrained code.
-/// Implements retry logic with exponential backoff and comprehensive health checks.
 /// </summary>
 public sealed class OpenSandboxRunner : ISandboxRunner
 {
+    private static readonly Regex AbsoluteHttpUrlRegex = new(
+        "https?://[^\\s\"'\\)\\]]+",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly ActivitySource ActivitySource = new("McpServer.CodeMode.OpenSandboxRunner");
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -23,42 +27,54 @@ public sealed class OpenSandboxRunner : ISandboxRunner
 
     private readonly OpenSandboxRunnerOptions options;
     private readonly ILogger<OpenSandboxRunner> logger;
+    private readonly IReadOnlyList<Uri> allowedBaseUris;
     private readonly Func<string, CancellationToken, Task<RunnerResult>> remoteExecutor;
 
-    /// <inheritdoc/>
-    public string SyntaxGuide =>
-        """
+    public string SyntaxGuide
+    {
+        get
+        {
+            string defaultBaseUrl = allowedBaseUris.Count > 0
+                ? allowedBaseUris[0].AbsoluteUri.TrimEnd('/')
+                : string.Empty;
+
+            string baseUrlSection = defaultBaseUrl.Length > 0
+                ? $"Use the injected `BASE_URL` variable for API calls. Default `BASE_URL` is \"{defaultBaseUrl}\"."
+                : "Use the injected `BASE_URL` variable for API calls. No default URL was discovered from OpenAPI sources.";
+
+            string allowedSection = allowedBaseUris.Count > 0
+                ? $"Only call API URLs under configured OpenAPI bases via `BASE_URL`: {string.Join(", ", allowedBaseUris.Select(static u => $"\"{u.AbsoluteUri.TrimEnd('/')}\""))}."
+                : "No API base allowlist is currently configured, so URL host restrictions are not enforced.";
+
+            return $$"""
         Runner: OpenSandbox (Python)
         Write pure Python code.
         You may call HTTP APIs directly from Python code when needed.
         A lightweight `requests`-compatible shim is available for basic HTTP requests; set a timeout (for example: timeout=10).
-        Assign the final value to a variable named exactly `result` (lowercase).
+        Prefer assigning the final value to `result`.
         If `result` is not set, captured stdout is returned when available.
-        CRITICAL: Do NOT use `Result`, `RESULT`, or any other casing — only lowercase `result` is captured.
+        CRITICAL: Do NOT use `Result`, `RESULT`, or any other casing - only lowercase `result` is captured.
         Do NOT use bare identifiers as section dividers (e.g., `Result # comment`). Use only `#` comments.
+        {{baseUrlSection}}
+        {{allowedSection}}
         Code mode is fully isolated from tool-Search tools.
         Do NOT use: SearchTools, CallTool, Search, GetSchema, or Execute in this code.
         HTTP example:
             import requests
-            response = requests.get("https://api.example.com/data", timeout=10)
+            response = requests.get(f"{BASE_URL}/breweries/random", timeout=10)
             result = response.json()
         Compute example:
             data = [1, 2, 3]
             result = sum(data)
         The final `result` value (or stdout fallback) is returned as tool output.
         """;
+        }
+    }
 
-
-
-    /// <summary>
-    /// Creates the OpenSandbox-backed runner.
-    /// </summary>
-    /// <param name="options">OpenSandbox connection and execution options.</param>
-    /// <param name="loggerFactory">Logger factory for creating component loggers.</param>
-    /// <param name="remoteExecutor">Optional override for the remote executor (used in tests).</param>
     public OpenSandboxRunner(
         OpenSandboxRunnerOptions options,
         ILoggerFactory loggerFactory,
+        IReadOnlyList<string>? allowedBaseUrls = null,
         Func<string, CancellationToken, Task<RunnerResult>>? remoteExecutor = null)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -70,15 +86,11 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         }
 
         this.options = options;
-        this.logger = loggerFactory.CreateLogger<OpenSandboxRunner>();
-        this.remoteExecutor = remoteExecutor ?? ((code, ct) => ExecuteInSandboxAsync(this.options, this.logger, code, ct));
+        logger = loggerFactory.CreateLogger<OpenSandboxRunner>();
+        allowedBaseUris = NormalizeAllowedBaseUris(allowedBaseUrls);
+        this.remoteExecutor = remoteExecutor ?? ((code, ct) => ExecuteInSandboxAsync(this.options, logger, code, ct));
     }
 
-    /// <summary>
-    /// Executes Python code inside an OpenSandbox container with retry logic.
-    /// The code must assign its final value to a <c>result</c> variable.
-    /// Tool-Search meta-tool calls are explicitly forbidden in code mode.
-    /// </summary>
     public async Task<RunnerResult> RunAsync(string code, CancellationToken ct)
     {
         logger.LogInformation(
@@ -92,17 +104,21 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         activity?.SetTag("mcp.sandbox.domain", options.Domain);
         activity?.SetTag("mcp.sandbox.image", options.Image);
 
-        // Code mode must stay isolated from tool-Search meta-tools.
         if (SandboxCodeGuard.ContainsForbiddenMetaToolUsage(code))
         {
             throw new InvalidOperationException(
-            "Code mode is isolated from tool-Search tools. " +
-            "Do not call SearchTools, CallTool, Search, GetSchema, or Execute inside code mode; use pure Python compute only.");
+                "Code mode is isolated from tool-Search tools. " +
+                "Do not call SearchTools, CallTool, Search, GetSchema, or Execute inside code mode; use pure Python compute only.");
         }
 
-        logger.LogInformation(
-            "Generated Python code for OpenSandbox Execute:\n{Code}",
-            code);
+        if (ContainsForbiddenHardcodedApiUsage(code))
+        {
+            throw new InvalidOperationException(
+                "Code mode HTTP calls must stay within configured OpenAPI data sources. " +
+                "Use BASE_URL (or ALLOWED_BASE_URLS) instead of hardcoded external URLs.");
+        }
+
+        logger.LogInformation("Generated Python code for OpenSandbox Execute:\n{Code}", code);
 
         try
         {
@@ -136,12 +152,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         }
     }
 
-
-
-    /// <summary>
-    /// Executes Python code in OpenSandbox with retry logic and comprehensive error handling.
-    /// </summary>
-    private static async Task<RunnerResult> ExecuteInSandboxAsync(
+    private async Task<RunnerResult> ExecuteInSandboxAsync(
         OpenSandboxRunnerOptions options,
         ILogger logger,
         string code,
@@ -153,13 +164,11 @@ public sealed class OpenSandboxRunner : ISandboxRunner
 
         var config = ConnectionConfigBuilder.Build(options);
         string encodedCode = Convert.ToBase64String(Encoding.UTF8.GetBytes(code));
-        string command = BuildPythonCommand(encodedCode);
+        string defaultBaseUrl = allowedBaseUris.Count > 0 ? allowedBaseUris[0].AbsoluteUri.TrimEnd('/') : string.Empty;
+        string command = BuildPythonCommand(encodedCode, defaultBaseUrl);
 
-        logger.LogInformation(
-            "Sending generated Python code to OpenSandbox server:\n{Code}",
-            code);
+        logger.LogInformation("Sending generated Python code to OpenSandbox server:\n{Code}", code);
 
-        // Suppress HTTP auto-instrumentation for SDK internal polling and RPC chatter.
         using var suppressScope = SuppressInstrumentationScope.Begin();
 
         logger.LogInformation(
@@ -167,7 +176,6 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             options.Domain,
             options.Image);
 
-        // Retry sandbox creation with exponential backoff
         await using Sandbox sandbox = await RetryHelper.RetryAsync(
             async () => await Sandbox.CreateAsync(new SandboxCreateOptions
             {
@@ -180,13 +188,11 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             initialDelay: TimeSpan.FromSeconds(0.5),
             cancellationToken: ct);
 
-        logger.LogInformation(
-            "OpenSandbox instance is ready. Running generated Python command.");
+        logger.LogInformation("OpenSandbox instance is ready. Running generated Python command.");
 
         Execution execution;
         try
         {
-            // Retry sandbox command execution
             execution = await RetryHelper.RetryAsync(
                 async () => await sandbox.Commands.RunAsync(command, cancellationToken: ct).WaitAsync(ct),
                 maxAttempts: 2,
@@ -210,7 +216,20 @@ public sealed class OpenSandboxRunner : ISandboxRunner
 
         if (execution.Error is not null)
         {
-            throw new InvalidOperationException($"OpenSandbox execution failed: {execution.Error.Name}: {execution.Error.Value}");
+            string stderr = string.Join(
+                '\n',
+                execution.Logs.Stderr.Select(message => message.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
+            string stdoutForError = string.Join(
+                '\n',
+                execution.Logs.Stdout.Select(message => message.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
+
+            logger.LogWarning(
+                "OpenSandbox execution failed. stderr: {Stderr}; stdout: {Stdout}",
+                stderr,
+                stdoutForError);
+
+            throw new InvalidOperationException(
+                $"OpenSandbox execution failed: {execution.Error.Name}: {execution.Error.Value}. {stderr} {stdoutForError}");
         }
 
         string stdout = string.Join(
@@ -254,12 +273,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
         return new RunnerResult(finalValue, 0);
     }
 
-
-
-    /// <summary>
-    /// Builds the Python command to Execute user code with proper isolation and error handling.
-    /// </summary>
-    private static string BuildPythonCommand(string encodedCode)
+    private static string BuildPythonCommand(string encodedCode, string defaultBaseUrl)
     {
         return $$"""
             python3 - <<'PY'
@@ -275,9 +289,8 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             import urllib.request
 
             code = base64.b64decode("{{encodedCode}}".encode("ascii")).decode("utf-8")
+            BASE_URL = {{JsonSerializer.Serialize(defaultBaseUrl)}}
 
-            # Install a default opener with explicit headers. Some public APIs reject
-            # Python's default urllib user-agent and return HTTP 403.
             _opener = urllib.request.build_opener()
             _opener.addheaders = [
                 ("User-Agent", "mcp-experiments/1.0"),
@@ -348,7 +361,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
             requests.patch = lambda url, **kwargs: _requests_request("PATCH", url, **kwargs)
             sys.modules["requests"] = requests
 
-            scope = {}
+            scope = {"requests": requests, "BASE_URL": BASE_URL}
             captured_stdout = io.StringIO()
             captured_stderr = io.StringIO()
             try:
@@ -358,7 +371,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
                     "ok": True,
                     "finalValue": scope.get("result"),
                     "stdout": captured_stdout.getvalue(),
-                    "stderr": captured_stderr.getvalue()
+                    "stderr": captured_stderr.getvalue(),
                 }
             except BaseException as ex:
                 payload = {
@@ -366,7 +379,7 @@ public sealed class OpenSandboxRunner : ISandboxRunner
                     "error": str(ex),
                     "traceback": traceback.format_exc(),
                     "stdout": captured_stdout.getvalue(),
-                    "stderr": captured_stderr.getvalue()
+                    "stderr": captured_stderr.getvalue(),
                 }
 
             try:
@@ -377,10 +390,54 @@ public sealed class OpenSandboxRunner : ISandboxRunner
                     "error": f"Failed to serialize execution payload: {serialization_ex}",
                     "traceback": traceback.format_exc(),
                     "stdout": captured_stdout.getvalue(),
-                    "stderr": captured_stderr.getvalue()
+                    "stderr": captured_stderr.getvalue(),
                 }
                 print(json.dumps(fallback_payload, ensure_ascii=False, default=str))
             PY
-            """;
+            """ + "\n";
+    }
+
+    private bool ContainsForbiddenHardcodedApiUsage(string code)
+    {
+        if (allowedBaseUris.Count == 0)
+        {
+            return false;
+        }
+
+        MatchCollection matches = AbsoluteHttpUrlRegex.Matches(code);
+        foreach (Match match in matches)
+        {
+            if (!Uri.TryCreate(match.Value, UriKind.Absolute, out Uri? discoveredUrl))
+            {
+                continue;
+            }
+
+            bool isAllowed = allowedBaseUris.Any(baseUri =>
+                discoveredUrl.Scheme.Equals(baseUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                discoveredUrl.Host.Equals(baseUri.Host, StringComparison.OrdinalIgnoreCase) &&
+                discoveredUrl.Port == baseUri.Port &&
+                discoveredUrl.AbsoluteUri.StartsWith(baseUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAllowed)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<Uri> NormalizeAllowedBaseUris(IReadOnlyList<string>? allowedBaseUrls)
+    {
+        if (allowedBaseUrls is null || allowedBaseUrls.Count == 0)
+        {
+            return Array.Empty<Uri>();
+        }
+
+        return allowedBaseUrls
+            .Select(baseUrl => Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? parsed) ? parsed : null)
+            .Where(uri => uri is not null)
+            .Select(static uri => uri!)
+            .ToArray();
     }
 }

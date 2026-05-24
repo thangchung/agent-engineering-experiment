@@ -249,7 +249,8 @@ requests.patch = lambda url, **kwargs: _requests_request("PATCH", url, **kwargs)
 sys.modules["requests"] = requests
 
 scope = {
-    "BASE_URL": BASE_URL
+    "BASE_URL": BASE_URL,
+    "requests": requests,
 }
 captured_stdout = io.StringIO()
 captured_stderr = io.StringIO()
@@ -274,22 +275,7 @@ except Exception as ex:
 print(json.dumps(payload, ensure_ascii=False, default=str))
 """;
 
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = "python3",
-            Arguments = "-",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        using Process process = new() { StartInfo = startInfo };
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start local Python process.");
-        }
+        using Process process = StartPythonProcess();
 
         await process.StandardInput.WriteAsync(wrapper.AsMemory(), ct);
         await process.StandardInput.FlushAsync();
@@ -344,6 +330,61 @@ print(json.dumps(payload, ensure_ascii=False, default=str))
         }
 
         return finalValue;
+    }
+
+    private static Process StartPythonProcess()
+    {
+        List<(string FileName, string Arguments)> candidates = [];
+
+        string? configuredPython = Environment.GetEnvironmentVariable("MCP_PYTHON");
+        if (!string.IsNullOrWhiteSpace(configuredPython))
+        {
+            candidates.Add((configuredPython.Trim(), "-"));
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            candidates.Add(("python3", "-"));
+            candidates.Add(("python", "-"));
+            candidates.Add(("py", "-3 -"));
+        }
+        else
+        {
+            candidates.Add(("python3", "-"));
+            candidates.Add(("python", "-"));
+        }
+
+        foreach ((string fileName, string arguments) in candidates.Distinct())
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            Process process = new() { StartInfo = startInfo };
+            try
+            {
+                if (process.Start())
+                {
+                    return process;
+                }
+
+                process.Dispose();
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                process.Dispose();
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Failed to start local Python process. Install Python 3 and ensure one of these commands exists in PATH: python3, python, or py.");
     }
 
     private static IReadOnlyList<Uri> NormalizeAllowedBaseUris(IReadOnlyList<string>? input)
