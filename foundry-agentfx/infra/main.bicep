@@ -107,6 +107,7 @@ module containerApps 'modules/container-apps.bicep' = if (skipContainerApps != '
     containerRegistryLoginServer: containerRegistry.outputs.loginServer
     containerRegistryResourceId: containerRegistry.outputs.registryId
     foundryProjectEndpoint: aiProject.outputs.AZURE_AI_PROJECT_ENDPOINT
+    foundryProjectResourceId: aiProject.outputs.projectId
     foundryModel: modelDeploymentName
     foundryIqEndpoint: !empty(foundryIqEndpoint) ? foundryIqEndpoint : aiProject.outputs.searchEndpoint
     foundryIqKbName: foundryIqKbName
@@ -145,10 +146,6 @@ output AZURE_AI_SEARCH_KB_MCP_CONNECTION_NAME string = aiProject.outputs.kbMcpCo
 output AZURE_STORAGE_ACCOUNT_NAME string = aiProject.outputs.storageAccountName
 
 // Container Apps (empty when skipped or hosted)
-output CLAW_API_URL string = skipContainerApps != 'true'
-  ? (enableHostedFoundry
-      ? '${aiProject.outputs.AZURE_AI_PROJECT_ENDPOINT}/agents/claw-api/endpoint/protocols/invocations?api-version=v1'
-      : containerApps!.outputs.clawApiUrl)
-  : ''
+output CLAW_SLACK_URL string = skipContainerApps != 'true' ? containerApps!.outputs.clawSlackUrl : ''
 output COFFEESHOP_MCP_URL string = skipContainerApps != 'true' ? containerApps!.outputs.coffeeshopMcpUrl : ''
 output TOOLSEARCH_GATEWAY_URL string = skipContainerApps != 'true' ? containerApps!.outputs.toolsearchGatewayUrl : ''

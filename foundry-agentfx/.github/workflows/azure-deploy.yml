@@ -1,4 +1,4 @@
-name: Deploy to Azure Container Apps
+name: Deploy to Azure
 
 on:
   push:
@@ -15,10 +15,9 @@ env:
   AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME || 'prod' }}
   AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'eastus2' }}
-  BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
 
 jobs:
-  build-and-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +32,17 @@ jobs:
           dotnet restore foundry-agentfx.slnx
           dotnet build foundry-agentfx.slnx --no-restore -c Release
           dotnet test foundry-agentfx.slnx --no-build -c Release
+
+  provision:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    outputs:
+      acr_name: ${{ steps.env-out.outputs.acr_name }}
+      acr_endpoint: ${{ steps.env-out.outputs.acr_endpoint }}
+      foundry_endpoint: ${{ steps.env-out.outputs.foundry_endpoint }}
+      gateway_url: ${{ steps.env-out.outputs.gateway_url }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install azd
         uses: Azure/setup-azd@v2
@@ -49,11 +59,116 @@ jobs:
           azd env new "$AZURE_ENV_NAME" --no-prompt
           azd env set AZURE_LOCATION "$AZURE_LOCATION"
           azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
-          azd env set SKIP_CONTAINER_APPS false
-          # Optional: set BRAVE_SEARCH_API_KEY if secret is configured to enable web_search tool
-          if [ -n "$BRAVE_SEARCH_API_KEY" ]; then
-            azd env set BRAVE_SEARCH_API_KEY "$BRAVE_SEARCH_API_KEY"
+          azd env set SLACK_BOT_TOKEN "${{ secrets.SLACK_BOT_TOKEN }}"
+          azd env set SLACK_APP_TOKEN "${{ secrets.SLACK_APP_TOKEN }}"
+          azd env set SLACK_SIGNING_SECRET "${{ secrets.SLACK_SIGNING_SECRET }}"
+          if [ -n "${{ secrets.BRAVE_SEARCH_API_KEY }}" ]; then
+            azd env set BRAVE_SEARCH_API_KEY "${{ secrets.BRAVE_SEARCH_API_KEY }}"
           fi
 
-      - name: Provision and deploy
-        run: azd up --no-prompt
+      # Step 1: provision infra only (no image push yet)
+      - name: Provision infra
+        run: azd provision --no-prompt
+
+      - name: Export env outputs
+        id: env-out
+        run: |
+          ACR=$(azd env get-values | grep ^AZURE_CONTAINER_REGISTRY_NAME | cut -d= -f2 | tr -d '"')
+          ACR_EP=$(azd env get-values | grep ^AZURE_CONTAINER_REGISTRY_ENDPOINT | cut -d= -f2 | tr -d '"')
+          FOUNDRY=$(azd env get-values | grep ^AZURE_AI_PROJECT_ENDPOINT | cut -d= -f2 | tr -d '"')
+          GATEWAY=$(azd env get-values | grep ^TOOLSEARCH_GATEWAY_URL | cut -d= -f2 | tr -d '"')
+          echo "acr_name=$ACR" >> "$GITHUB_OUTPUT"
+          echo "acr_endpoint=$ACR_EP" >> "$GITHUB_OUTPUT"
+          echo "foundry_endpoint=$FOUNDRY" >> "$GITHUB_OUTPUT"
+          echo "gateway_url=$GATEWAY" >> "$GITHUB_OUTPUT"
+
+  build-claw-api-image:
+    # Step 2: build claw-api image BEFORE deploy so postdeploy hook can find it
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CONTAINER_REGISTRY_NAME: ${{ needs.provision.outputs.acr_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in with Azure (Federated Credentials)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push claw-api image to ACR
+        run: |
+          TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}
+          REPO="foundry-agentfx/claw-api-${AZURE_ENV_NAME}"
+          az acr build \
+            --registry "$AZURE_CONTAINER_REGISTRY_NAME" \
+            --image "${REPO}:${TAG}" \
+            --image "${REPO}:latest" \
+            --file src/Claw.Api/Dockerfile \
+            .
+
+  deploy:
+    # Step 3: deploy all ACA services + postdeploy hook registers claw-api (image now exists)
+    needs: [provision, build-claw-api-image]
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CONTAINER_REGISTRY_NAME: ${{ needs.provision.outputs.acr_name }}
+      AZURE_CONTAINER_REGISTRY_ENDPOINT: ${{ needs.provision.outputs.acr_endpoint }}
+      AZURE_AI_PROJECT_ENDPOINT: ${{ needs.provision.outputs.foundry_endpoint }}
+      TOOLSEARCH_GATEWAY_URL: ${{ needs.provision.outputs.gateway_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+
+      - name: Log in with Azure (Federated Credentials)
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider github \
+            --tenant-id "$AZURE_TENANT_ID"
+
+      - name: Restore azd environment
+        run: |
+          azd env new "$AZURE_ENV_NAME" --no-prompt || true
+          azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+          azd env set AZURE_LOCATION "$AZURE_LOCATION"
+
+      # Deploys claw-slack, coffeeshop-mcp, toolsearch-gateway
+      # postdeploy hook (register-agent.sh) runs here — claw-api image already in ACR
+      - name: Deploy services
+        run: azd deploy --no-prompt
+
+      - name: Wait for Foundry agent to become active
+        run: |
+          echo "Polling agent status..."
+          for i in $(seq 1 20); do
+            STATUS=$(az rest \
+              --method GET \
+              --url "${AZURE_AI_PROJECT_ENDPOINT}/agents/claw-api?api-version=2025-11-15-preview" \
+              --resource "https://ai.azure.com" \
+              --query "status" -o tsv 2>/dev/null || echo "unknown")
+            echo "Attempt $i: status=$STATUS"
+            if [ "$STATUS" = "active" ]; then echo "Agent active!"; exit 0; fi
+            sleep 30
+          done
+          echo "WARNING: Agent not active within 10 min — check Foundry portal"
+
+      - name: Smoke test
+        run: |
+          TOKEN=$(az account get-access-token --resource "https://ai.azure.com" --query accessToken -o tsv)
+          RESPONSE=$(curl -sf \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Foundry-Features: HostedAgents=V1Preview" \
+            -d '{"input":"list menu"}' \
+            "${AZURE_AI_PROJECT_ENDPOINT}/agents/claw-api/endpoint/protocols/invocations?api-version=v1" \
+            --max-time 60 || echo "TIMEOUT_OR_ERROR")
+          echo "Response: $RESPONSE"
+          if echo "$RESPONSE" | grep -qi "TIMEOUT_OR_ERROR"; then
+            echo "WARNING: Smoke test timed out on cold start — check Foundry portal"
+          fi

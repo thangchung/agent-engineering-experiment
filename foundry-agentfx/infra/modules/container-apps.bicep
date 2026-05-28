@@ -7,6 +7,9 @@ param containerRegistryLoginServer string
 param containerRegistryResourceId string
 param foundryProjectEndpoint string
 
+@description('Resource ID of the Foundry AI project — used to scope RBAC for claw-slack identity')
+param foundryProjectResourceId string = ''
+
 @description('Placeholder image used on first deploy before real images are pushed. azd deploy overwrites this.')
 param seedImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
@@ -120,7 +123,7 @@ resource toolsearchGateway 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppsEnv.id
     configuration: {
       ingress: {
-        external: false
+        external: true
         targetPort: 8080
         transport: 'http'
       }
@@ -150,10 +153,10 @@ resource toolsearchGateway 'Microsoft.App/containerApps@2024-03-01' = {
   dependsOn: [coffeeshopMcp]
 }
 
-resource clawApi 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'claw-api'
+resource clawSlack 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'claw-slack'
   location: location
-  tags: union(tags, { 'azd-service-name': 'claw-api' })
+  tags: union(tags, { 'azd-service-name': 'claw-slack' })
   identity: {
     type: 'SystemAssigned, UserAssigned'
     userAssignedIdentities: { '${acrPullIdentity.id}': {} }
@@ -167,45 +170,48 @@ resource clawApi 'Microsoft.App/containerApps@2024-03-01' = {
         transport: 'http'
       }
       registries: [{ server: containerRegistryLoginServer, identity: acrPullIdentity.id }]
-      secrets: concat(
-        !empty(slackBotToken) ? [{ name: 'slack-bot-token', value: slackBotToken }] : [],
-        !empty(slackAppToken) ? [{ name: 'slack-app-token', value: slackAppToken }] : [],
-        !empty(slackSigningSecret) ? [{ name: 'slack-signing-secret', value: slackSigningSecret }] : []
-      )
     }
     template: {
       containers: [
         {
-          name: 'claw-api'
+          name: 'claw-slack'
           image: seedImage
-          resources: { cpu: json('0.5'), memory: '1Gi' }
-          env: concat(
-            [
-              { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
-              { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
-              { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-              { name: 'OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', value: 'true' }
-              { name: 'Agent__Provider', value: 'foundry' }
-              { name: 'Foundry__Endpoint', value: foundryProjectEndpoint }
-              { name: 'Foundry__Model', value: foundryModel }
-              { name: 'Services__ToolSearchGateway__Url', value: 'https://${toolsearchGateway.properties.latestRevisionFqdn}' }
-            ],
-            !empty(slackBotToken) ? [{ name: 'Slack__BotToken', secretRef: 'slack-bot-token' }] : [],
-            !empty(slackAppToken) ? [{ name: 'Slack__AppToken', secretRef: 'slack-app-token' }] : [],
-            !empty(slackSigningSecret) ? [{ name: 'Slack__SigningSecret', secretRef: 'slack-signing-secret' }] : []
-          )
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          env: [
+            { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
+            { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
+            { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+            // Agent:BaseUrl = Foundry project endpoint; path comes from appsettings.Production.json
+            { name: 'Agent__BaseUrl', value: foundryProjectEndpoint }
+            { name: 'Slack__BotToken', value: slackBotToken }
+            { name: 'Slack__AppToken', value: slackAppToken }
+            { name: 'Slack__SigningSecret', value: slackSigningSecret }
+          ]
         }
       ]
-      scale: {
-        minReplicas: 1
-        maxReplicas: 10
-        rules: [{ name: 'http-scaling', http: { metadata: { concurrentRequests: '100' } } }]
-      }
+      scale: { minReplicas: 1, maxReplicas: 3 }
     }
   }
   dependsOn: [toolsearchGateway]
 }
 
-output clawApiUrl string = 'https://${clawApi.properties.latestRevisionFqdn}'
+// RBAC: grant claw-slack system identity permission to invoke Foundry Hosted Agent endpoint
+// Role: Azure AI Developer (64702f94-c441-49e6-a78b-ef80e0188fee) on the Foundry project
+resource clawSlackFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(foundryProjectResourceId)) {
+  name: guid(foundryProjectResourceId, clawSlack.identity.principalId, 'AzureAIDeveloper')
+  scope: existingFoundryProject
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee') // Azure AI Developer
+    principalId: clawSlack.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource existingFoundryProject 'Microsoft.MachineLearningServices/workspaces@2024-04-01' existing = if (!empty(foundryProjectResourceId)) {
+  name: last(split(foundryProjectResourceId, '/'))
+  scope: resourceGroup()
+}
+
+output clawSlackUrl string = 'https://${clawSlack.properties.latestRevisionFqdn}'
 output coffeeshopMcpUrl string = 'https://${coffeeshopMcp.properties.latestRevisionFqdn}'
 output toolsearchGatewayUrl string = 'https://${toolsearchGateway.properties.latestRevisionFqdn}'

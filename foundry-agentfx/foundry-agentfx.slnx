@@ -2,12 +2,14 @@
   <Folder Name="/src/">
     <Project Path="src/Claw.Api/Claw.Api.csproj" />
     <Project Path="src/Claw.Core/Claw.Core.csproj" />
+    <Project Path="src/Claw.Slack/Claw.Slack.csproj" />
     <Project Path="src/Coffeeshop.Mcp/Coffeeshop.Mcp.csproj" />
     <Project Path="src/Coffeeshop.Models/Coffeeshop.Models.csproj" />
     <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
     <Project Path="src/ToolSearch.Gateway/ToolSearch.Gateway.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Claw.Slack.Tests/Claw.Slack.Tests.csproj" />
     <Project Path="tests/Claw.Tests/Claw.Tests.csproj" />
     <Project Path="tests/Coffeeshop.Tests/Coffeeshop.Tests.csproj" />
     <Project Path="tests/ToolSearch.Tests/ToolSearch.Tests.csproj" />

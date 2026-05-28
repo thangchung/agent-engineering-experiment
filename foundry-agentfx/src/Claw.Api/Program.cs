@@ -157,8 +157,6 @@ if (isHostedMode)
     builder.Services.AddScoped<InvocationHandler, CoffeeshopInvocationHandler>();
 }
 
-builder.Services.AddSlackChannel(builder.Configuration);
-
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -172,7 +170,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapWebChannel();
-app.MapSlack(builder.Configuration);
 
 // Map /invocations endpoint when in hosted mode (DI registered above)
 if (isHostedMode)

@@ -7,12 +7,16 @@ infra:
   path: infra
 
 services:
-  claw-api:
-    project: src/Claw.Api
+  # claw-api is a Foundry Hosted Agent — image built via ACR and registered via register-agent.sh
+  # It is NOT deployed as a Container App by azd.
+  # Build: az acr build -t foundry-agentfx/claw-api-${AZURE_ENV_NAME}:latest -r ${ACR_NAME} . --file src/Claw.Api/Dockerfile
+
+  claw-slack:
+    project: src/Claw.Slack
     language: dotnet
     host: containerapp
     docker:
-      path: src/Claw.Api/Dockerfile
+      path: src/Claw.Slack/Dockerfile
       context: .
 
   coffeeshop-mcp:

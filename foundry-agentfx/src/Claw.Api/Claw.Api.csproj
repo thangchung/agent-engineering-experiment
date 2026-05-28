@@ -23,8 +23,6 @@
     <PackageReference Include="Microsoft.Agents.AI.Foundry" Version="1.7.0-preview.260526.1" />
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260402.1" />
     <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.7.0" />
-    <PackageReference Include="SlackNet" Version="0.17.9" />
-    <PackageReference Include="SlackNet.AspNetCore" Version="0.17.9" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.*" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.*" />
   </ItemGroup>

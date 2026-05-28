@@ -2,6 +2,7 @@
 #:project src/Coffeeshop.Mcp/Coffeeshop.Mcp.csproj
 #:project src/ToolSearch.Gateway/ToolSearch.Gateway.csproj
 #:project src/Claw.Api/Claw.Api.csproj
+#:project src/Claw.Slack/Claw.Slack.csproj
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -11,7 +12,6 @@ var builder = DistributedApplication.CreateBuilder(args);
 var slackBotToken     = builder.AddParameter("slack-bot-token",     secret: true);
 var slackAppToken     = builder.AddParameter("slack-app-token",     secret: true);
 var slackSigningSecret = builder.AddParameter("slack-signing-secret", secret: true);
-//var copilotGitHubToken = builder.AddParameter("copilot-github-token", secret: true);
 //var foundryIqApiKey   = builder.AddParameter("foundry-iq-api-key",  secret: true);
 //var foundryApiKey     = builder.AddParameter("foundry-api-key",     secret: true);
 var braveSearchApiKey = builder.AddParameter("brave-search-api-key", secret: true);
@@ -47,24 +47,34 @@ var gateway = builder.AddProject<Projects.ToolSearch_Gateway>("toolsearch-gatewa
     .WithEnvironment("APPLICATIONINSIGHTS_CONNECTION_STRING", appInsightsConn)
     .WaitFor(coffeeshop);
 
-builder.AddProject<Projects.Claw_Api>("claw-api")
+var clawApi = builder.AddProject<Projects.Claw_Api>("claw-api")
     .WithHttpEndpoint(port: 5000, name: "http")
     // Gateway URL — resolved automatically from Aspire service discovery
     .WithEnvironment("Services__ToolSearchGateway__Url", gateway.GetEndpoint("http"))
     // Agent provider: "copilot" (default, uses logged-in GitHub account locally)
     //                 "foundry"  (requires Foundry__Endpoint)
     .WithEnvironment("Agent__Provider",        agentProvider)
+    .WithEnvironment("Agent__HostedMode",      "foundry")
     .WithEnvironment("Foundry__Endpoint",      foundryEndpoint)
     .WithEnvironment("Foundry__Model",         foundryModel)
     // GitHub Copilot token — leave empty locally to use the logged-in user's token
     //.WithEnvironment("Copilot__GitHubToken",   copilotGitHubToken)
-    // Slack — leave all empty to disable Slack integration locally
-    .WithEnvironment("Slack__BotToken",        slackBotToken)
-    .WithEnvironment("Slack__AppToken",        slackAppToken)
-    .WithEnvironment("Slack__SigningSecret",   slackSigningSecret)
     // GenAI telemetry: capture prompt/completion content in Aspire dashboard
     .WithEnvironment("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true")
     .WithEnvironment("APPLICATIONINSIGHTS_CONNECTION_STRING", appInsightsConn)
     .WaitFor(gateway);
+
+builder.AddProject<Projects.Claw_Slack>("claw-slack")
+    .WithHttpEndpoint(port: 5003, name: "http")
+    // Forward Slack events to claw-api /invocations — resolved by Aspire
+    .WithEnvironment("Agent__BaseUrl",          clawApi.GetEndpoint("http"))
+    // Override cloud path from appsettings.Production.json — claw-api locally serves /invocations
+    .WithEnvironment("Agent__InvocationsPath",  "/invocations")
+    // Slack tokens
+    .WithEnvironment("Slack__BotToken",        slackBotToken)
+    .WithEnvironment("Slack__AppToken",        slackAppToken)
+    .WithEnvironment("Slack__SigningSecret",   slackSigningSecret)
+    .WithEnvironment("APPLICATIONINSIGHTS_CONNECTION_STRING", appInsightsConn)
+    .WaitFor(clawApi);
 
 builder.Build().Run();
