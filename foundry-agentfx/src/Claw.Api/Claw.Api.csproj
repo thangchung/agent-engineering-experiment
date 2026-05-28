@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Claw.Api</RootNamespace>
+    <UserSecretsId>d971714e-6dc0-4064-90e2-b114e32907ca</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="mind/**">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.AI.AgentServer.Invocations" Version="1.0.0-beta.4" />
+    <PackageReference Include="Azure.AI.Projects" Version="2.1.0-beta.2" />
+    <PackageReference Include="Azure.Identity" Version="1.*" />
+    <PackageReference Include="GitHub.Copilot.SDK" Version="0.2.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.7.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Foundry" Version="1.7.0-preview.260526.1" />
+    <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.0.0-preview.260402.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.7.0" />
+    <PackageReference Include="SlackNet" Version="0.17.9" />
+    <PackageReference Include="SlackNet.AspNetCore" Version="0.17.9" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.*" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Claw.Core\Claw.Core.csproj" />
+    <ProjectReference Include="..\Coffeeshop.Models\Coffeeshop.Models.csproj" />
+    <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

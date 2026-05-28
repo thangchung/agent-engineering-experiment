@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>☕ Claw Coffeeshop</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f7f5f2;
+    color: #1a1a1a;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e0dbd4;
+    background: #fff;
+    flex-shrink: 0;
+  }
+
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
+
+  #reset-btn {
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    border: 1px solid #d0cbc4;
+    border-radius: 6px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  #reset-btn:hover { background: #f0ebe5; color: #333; }
+
+  #chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .msg {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    line-height: 1.55;
+    font-size: 0.92rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.user {
+    align-self: flex-end;
+    background: #2c2c2c;
+    color: #f5f5f5;
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg.assistant {
+    align-self: flex-start;
+    background: #fff;
+    border: 1px solid #e8e3dc;
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg.error {
+    align-self: flex-start;
+    background: #fff5f5;
+    border: 1px solid #ffd5d5;
+    color: #c0392b;
+    border-bottom-left-radius: 4px;
+  }
+
+  #typing-indicator {
+    align-self: flex-start;
+    display: none;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid #e8e3dc;
+    border-radius: 12px;
+    border-bottom-left-radius: 4px;
+    font-size: 0.85rem;
+    color: #888;
+  }
+  #typing-indicator.visible { display: flex; }
+
+  #typing-indicator span {
+    width: 6px; height: 6px;
+    background: #aaa;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+  #typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+  #typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-5px); }
+  }
+
+  .compose {
+    display: flex;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid #e0dbd4;
+    background: #fff;
+    flex-shrink: 0;
+    align-items: flex-end;
+  }
+
+  #message-input {
+    flex: 1;
+    padding: 9px 13px;
+    border: 1px solid #d0cbc4;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    font-family: inherit;
+    resize: none;
+    line-height: 1.5;
+    max-height: 128px;
+    outline: none;
+    transition: border-color 0.15s;
+    background: #faf9f7;
+  }
+  #message-input:focus { border-color: #8a7a6a; background: #fff; }
+  #message-input::placeholder { color: #aaa; }
+
+  #send-btn {
+    padding: 9px 18px;
+    background: #2c2c2c;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  #send-btn:hover:not(:disabled) { background: #444; }
+  #send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>☕ Claw Coffeeshop</h1>
+  <button id="reset-btn" onclick="resetChat()">New session</button>
+</header>
+
+<div id="chat-log">
+  <div class="msg assistant">Hi! What can I get you today?</div>
+</div>
+<div id="typing-indicator">
+  <span></span><span></span><span></span>
+</div>
+
+<div class="compose">
+  <textarea id="message-input" rows="1"
+    placeholder="What can I get you?"
+    onkeydown="handleKey(event)"></textarea>
+  <button id="send-btn" onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+const chatLog = document.getElementById('chat-log');
+const input   = document.getElementById('message-input');
+const sendBtn = document.getElementById('send-btn');
+const typing  = document.getElementById('typing-indicator');
+
+function scrollToBottom() {
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  chatLog.appendChild(div);
+  scrollToBottom();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 128) + 'px';
+});
+
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text || sendBtn.disabled) return;
+
+  addMessage('user', text);
+  input.value = '';
+  input.style.height = 'auto';
+
+  sendBtn.disabled = true;
+  sendBtn.textContent = '…';
+  typing.classList.add('visible');
+  scrollToBottom();
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      addMessage('error', 'Error: ' + (err.error || res.statusText));
+      return;
+    }
+
+    const data = await res.json();
+    addMessage('assistant', data.reply || '(no response)');
+  } catch (err) {
+    addMessage('error', 'Network error: ' + err.message);
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send';
+    typing.classList.remove('visible');
+    input.focus();
+  }
+}
+
+async function resetChat() {
+  try {
+    await fetch('/api/chat/reset', { method: 'POST' });
+    chatLog.innerHTML = '';
+    addMessage('assistant', 'Session reset. What can I get you?');
+  } catch (err) {
+    addMessage('error', 'Reset failed: ' + err.message);
+  }
+}
+
+input.focus();
+</script>
+</body>
+</html>

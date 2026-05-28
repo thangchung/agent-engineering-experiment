@@ -1,0 +1,40 @@
+name: foundry-agentfx
+metadata:
+  template: foundry-agentfx@0.1.0
+
+infra:
+  provider: bicep
+  path: infra
+
+services:
+  claw-api:
+    project: src/Claw.Api
+    language: dotnet
+    host: containerapp
+    docker:
+      path: src/Claw.Api/Dockerfile
+      context: .
+
+  coffeeshop-mcp:
+    project: src/Coffeeshop.Mcp
+    language: dotnet
+    host: containerapp
+    docker:
+      path: src/Coffeeshop.Mcp/Dockerfile
+      context: .
+
+  toolsearch-gateway:
+    project: src/ToolSearch.Gateway
+    language: dotnet
+    host: containerapp
+    docker:
+      path: src/ToolSearch.Gateway/Dockerfile
+      context: .
+
+hooks:
+  postprovision:
+    shell: sh
+    run: infra/hooks/postprovision.sh
+  postdeploy:
+    shell: sh
+    run: infra/hooks/register-agent.sh
