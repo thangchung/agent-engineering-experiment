@@ -1,0 +1,393 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.43.8.12551",
+      "templateHash": "9317585722738983646"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "object"
+    },
+    "environmentName": {
+      "type": "string"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string"
+    },
+    "appInsightsConnectionString": {
+      "type": "string"
+    },
+    "containerRegistryLoginServer": {
+      "type": "string"
+    },
+    "containerRegistryResourceId": {
+      "type": "string"
+    },
+    "foundryProjectEndpoint": {
+      "type": "string"
+    },
+    "foundryProjectResourceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of the Foundry AI project — used to scope RBAC for claw-slack identity"
+      }
+    },
+    "foundryAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry AI Services account name — needed to reference the CognitiveServices/accounts/projects resource for RBAC"
+      }
+    },
+    "seedImage": {
+      "type": "string",
+      "defaultValue": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest",
+      "metadata": {
+        "description": "Placeholder image used on first deploy before real images are pushed. azd deploy overwrites this."
+      }
+    },
+    "foundryIqEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry IQ (AI Search) endpoint — enables knowledge_lookup tool when non-empty"
+      }
+    },
+    "foundryIqKbName": {
+      "type": "string",
+      "defaultValue": "coffeeshop-kb",
+      "metadata": {
+        "description": "Knowledge base name for Foundry IQ queries"
+      }
+    },
+    "toolboxEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry Toolbox MCP endpoint — enables code_interpreter tool when non-empty"
+      }
+    },
+    "braveSearchApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Brave Search API key — enables web_search tool when non-empty"
+      }
+    },
+    "slackBotToken": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "slackAppToken": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "slackSigningSecret": {
+      "type": "securestring",
+      "defaultValue": ""
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('id-acr-pull-{0}', parameters('environmentName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('containerRegistryResourceId'), '/')))]",
+      "name": "[guid(parameters('containerRegistryResourceId'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName'))), 'AcrPull')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName'))), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('environmentName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(parameters('logAnalyticsWorkspaceId'), '2023-09-01').customerId]",
+            "sharedKey": "[listKeys(parameters('logAnalyticsWorkspaceId'), '2023-09-01').primarySharedKey]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "coffeeshop-mcp",
+      "location": "[parameters('location')]",
+      "tags": "[union(parameters('tags'), createObject('azd-service-name', 'coffeeshop-mcp'))]",
+      "identity": {
+        "type": "SystemAssigned, UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]",
+        "configuration": {
+          "ingress": {
+            "external": false,
+            "targetPort": 8080,
+            "transport": "http"
+          },
+          "registries": [
+            {
+              "server": "[parameters('containerRegistryLoginServer')]",
+              "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "coffeeshop-mcp",
+              "image": "[parameters('seedImage')]",
+              "resources": {
+                "cpu": "[json('0.25')]",
+                "memory": "0.5Gi"
+              },
+              "env": [
+                {
+                  "name": "ASPNETCORE_ENVIRONMENT",
+                  "value": "Production"
+                },
+                {
+                  "name": "ASPNETCORE_HTTP_PORTS",
+                  "value": "8080"
+                },
+                {
+                  "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                  "value": "[parameters('appInsightsConnectionString')]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 5
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]",
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "toolsearch-gateway",
+      "location": "[parameters('location')]",
+      "tags": "[union(parameters('tags'), createObject('azd-service-name', 'toolsearch-gateway'))]",
+      "identity": {
+        "type": "SystemAssigned, UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "http"
+          },
+          "registries": [
+            {
+              "server": "[parameters('containerRegistryLoginServer')]",
+              "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "toolsearch-gateway",
+              "image": "[parameters('seedImage')]",
+              "resources": {
+                "cpu": "[json('0.25')]",
+                "memory": "0.5Gi"
+              },
+              "env": [
+                {
+                  "name": "ASPNETCORE_ENVIRONMENT",
+                  "value": "Production"
+                },
+                {
+                  "name": "ASPNETCORE_HTTP_PORTS",
+                  "value": "8080"
+                },
+                {
+                  "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                  "value": "[parameters('appInsightsConnectionString')]"
+                },
+                {
+                  "name": "Services__CoffeeshopMcp__Url",
+                  "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', 'coffeeshop-mcp'), '2024-03-01').latestRevisionFqdn)]"
+                },
+                {
+                  "name": "FoundryIQ__SearchEndpoint",
+                  "value": "[parameters('foundryIqEndpoint')]"
+                },
+                {
+                  "name": "FoundryIQ__KnowledgeBaseName",
+                  "value": "[parameters('foundryIqKbName')]"
+                },
+                {
+                  "name": "Toolbox__McpEndpoint",
+                  "value": "[parameters('toolboxEndpoint')]"
+                },
+                {
+                  "name": "BraveSearch__ApiKey",
+                  "value": "[parameters('braveSearchApiKey')]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 5
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]",
+        "[resourceId('Microsoft.App/containerApps', 'coffeeshop-mcp')]",
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "claw-slack",
+      "location": "[parameters('location')]",
+      "tags": "[union(parameters('tags'), createObject('azd-service-name', 'claw-slack'))]",
+      "identity": {
+        "type": "SystemAssigned, UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]",
+        "configuration": {
+          "ingress": {
+            "external": true,
+            "targetPort": 8080,
+            "transport": "http"
+          },
+          "registries": [
+            {
+              "server": "[parameters('containerRegistryLoginServer')]",
+              "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "claw-slack",
+              "image": "[parameters('seedImage')]",
+              "resources": {
+                "cpu": "[json('0.25')]",
+                "memory": "0.5Gi"
+              },
+              "env": [
+                {
+                  "name": "ASPNETCORE_ENVIRONMENT",
+                  "value": "Production"
+                },
+                {
+                  "name": "ASPNETCORE_HTTP_PORTS",
+                  "value": "8080"
+                },
+                {
+                  "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                  "value": "[parameters('appInsightsConnectionString')]"
+                },
+                {
+                  "name": "Agent__BaseUrl",
+                  "value": "[parameters('foundryProjectEndpoint')]"
+                },
+                {
+                  "name": "Slack__BotToken",
+                  "value": "[parameters('slackBotToken')]"
+                },
+                {
+                  "name": "Slack__AppToken",
+                  "value": "[parameters('slackAppToken')]"
+                },
+                {
+                  "name": "Slack__SigningSecret",
+                  "value": "[parameters('slackSigningSecret')]"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 3
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-acr-pull-{0}', parameters('environmentName')))]",
+        "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]",
+        "[resourceId('Microsoft.App/containerApps', 'toolsearch-gateway')]"
+      ]
+    },
+    {
+      "condition": "[and(not(empty(parameters('foundryProjectResourceId'))), not(empty(parameters('foundryAccountName'))))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.CognitiveServices/accounts/projects', split(format('{0}/{1}', parameters('foundryAccountName'), last(split(parameters('foundryProjectResourceId'), '/'))), '/')[0], split(format('{0}/{1}', parameters('foundryAccountName'), last(split(parameters('foundryProjectResourceId'), '/'))), '/')[1])]",
+      "name": "[guid(parameters('foundryProjectResourceId'), 'claw-slack', 'AzureAIDeveloper')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')]",
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', 'claw-slack'), '2024-03-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/containerApps', 'claw-slack')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "clawSlackUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', 'claw-slack'), '2024-03-01').latestRevisionFqdn)]"
+    },
+    "coffeeshopMcpUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', 'coffeeshop-mcp'), '2024-03-01').latestRevisionFqdn)]"
+    },
+    "toolsearchGatewayUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', 'toolsearch-gateway'), '2024-03-01').latestRevisionFqdn)]"
+    }
+  }
+}

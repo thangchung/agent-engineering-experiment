@@ -10,11 +10,11 @@ param foundryProjectEndpoint string
 @description('Resource ID of the Foundry AI project — used to scope RBAC for claw-slack identity')
 param foundryProjectResourceId string = ''
 
+@description('Foundry AI Services account name — needed to reference the CognitiveServices/accounts/projects resource for RBAC')
+param foundryAccountName string = ''
+
 @description('Placeholder image used on first deploy before real images are pushed. azd deploy overwrites this.')
 param seedImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
-
-@description('Model deployment name (alias used by the app)')
-param foundryModel string = 'gpt-5.4-mini'
 
 @description('Foundry IQ (AI Search) endpoint — enables knowledge_lookup tool when non-empty')
 param foundryIqEndpoint string = ''
@@ -35,9 +35,6 @@ param slackBotToken string = ''
 param slackAppToken string = ''
 @secure()
 param slackSigningSecret string = ''
-
-@description('When true, claw-api is deployed as Foundry Hosted Agent instead of Container App.')
-param enableHostedFoundry bool = false
 
 // User-assigned identity for ACR pull — pre-created so AcrPull can be assigned before containers start
 resource acrPullIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -139,7 +136,7 @@ resource toolsearchGateway 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
             { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-            { name: 'Services__CoffeeshopMcp__Url', value: 'https://${coffeeshopMcp.properties.latestRevisionFqdn}' }
+            { name: 'Services__CoffeeshopMcp__Url', value: 'http://${coffeeshopMcp.properties.latestRevisionFqdn}' }
             { name: 'FoundryIQ__SearchEndpoint', value: foundryIqEndpoint }
             { name: 'FoundryIQ__KnowledgeBaseName', value: foundryIqKbName }
             { name: 'Toolbox__McpEndpoint', value: toolboxEndpoint }
@@ -150,7 +147,6 @@ resource toolsearchGateway 'Microsoft.App/containerApps@2024-03-01' = {
       scale: { minReplicas: 1, maxReplicas: 5 }
     }
   }
-  dependsOn: [coffeeshopMcp]
 }
 
 resource clawSlack 'Microsoft.App/containerApps@2024-03-01' = {
@@ -181,8 +177,9 @@ resource clawSlack 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
             { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-            // Agent:BaseUrl = Foundry project endpoint; path comes from appsettings.Production.json
             { name: 'Agent__BaseUrl', value: foundryProjectEndpoint }
+            { name: 'Agent__InvocationsPath', value: 'agents/claw-api/endpoint/protocols/invocations?api-version=v1' }
+            { name: 'Agent__TokenResource', value: 'https://ai.azure.com' }
             { name: 'Slack__BotToken', value: slackBotToken }
             { name: 'Slack__AppToken', value: slackAppToken }
             { name: 'Slack__SigningSecret', value: slackSigningSecret }
@@ -197,8 +194,8 @@ resource clawSlack 'Microsoft.App/containerApps@2024-03-01' = {
 
 // RBAC: grant claw-slack system identity permission to invoke Foundry Hosted Agent endpoint
 // Role: Azure AI Developer (64702f94-c441-49e6-a78b-ef80e0188fee) on the Foundry project
-resource clawSlackFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(foundryProjectResourceId)) {
-  name: guid(foundryProjectResourceId, clawSlack.identity.principalId, 'AzureAIDeveloper')
+resource clawSlackFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(foundryProjectResourceId) && !empty(foundryAccountName)) {
+  name: guid(foundryProjectResourceId, 'claw-slack', 'AzureAIDeveloper')
   scope: existingFoundryProject
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee') // Azure AI Developer
@@ -207,9 +204,8 @@ resource clawSlackFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
-resource existingFoundryProject 'Microsoft.MachineLearningServices/workspaces@2024-04-01' existing = if (!empty(foundryProjectResourceId)) {
-  name: last(split(foundryProjectResourceId, '/'))
-  scope: resourceGroup()
+resource existingFoundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' existing = if (!empty(foundryProjectResourceId) && !empty(foundryAccountName)) {
+  name: '${foundryAccountName}/${last(split(foundryProjectResourceId, '/'))}'
 }
 
 output clawSlackUrl string = 'https://${clawSlack.properties.latestRevisionFqdn}'

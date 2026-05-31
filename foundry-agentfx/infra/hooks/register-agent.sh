@@ -7,6 +7,11 @@ set -e
 # Load azd env vars into shell
 eval "$(azd env get-values 2>/dev/null | sed 's/^/export /')" 2>/dev/null || true
 
+if [ "${SKIP_CONTAINER_APPS:-false}" = "true" ]; then
+  echo "SKIP_CONTAINER_APPS=true detected. Skipping Foundry Hosted Agent registration."
+  exit 0
+fi
+
 AGENT_NAME="claw-api"
 ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME}"
 ACR_ENDPOINT="${AZURE_CONTAINER_REGISTRY_ENDPOINT}"

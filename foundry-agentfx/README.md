@@ -57,6 +57,54 @@ curl -X POST http://localhost:5000/invocations \
   -d '{"input":"list the menu"}'
 ```
 
+### Hybrid local runtime + cloud infra-only
+
+Use this mode when you want cloud Foundation resources (Foundry project, model deployment, AI Search, App Insights, ACR), but run app services locally with Aspire.
+
+**What `SKIP_CONTAINER_APPS=true` does:**
+- Provisions infra via Bicep
+- Skips Container Apps resources for `claw-slack`, `toolsearch-gateway`, `coffeeshop-mcp`
+- Skips hosted-agent registration hook during deploy
+
+```bash
+az login && azd auth login
+azd env new <env-name>
+azd env set AZURE_LOCATION eastus2
+azd env set SKIP_CONTAINER_APPS true
+
+# Provision cloud dependencies only
+azd provision
+```
+
+Map provisioned outputs into local settings (via user-secrets or `appsettings.Development.json` Parameters):
+
+```bash
+ENDPOINT=$(azd env get-values | grep AZURE_AI_PROJECT_ENDPOINT | cut -d= -f2 | tr -d '"')
+MODEL=$(azd env get-values | grep AZURE_AI_MODEL_DEPLOYMENT_NAME | cut -d= -f2 | tr -d '"')
+SEARCH=$(azd env get-values | grep AZURE_AI_SEARCH_SERVICE_ENDPOINT | cut -d= -f2 | tr -d '"')
+APPINSIGHTS=$(azd env get-values | grep APPLICATIONINSIGHTS_CONNECTION_STRING | cut -d= -f2 | tr -d '"')
+
+dotnet user-secrets set "Parameters:agent-provider" "foundry"
+dotnet user-secrets set "Parameters:foundry-endpoint" "$ENDPOINT"
+dotnet user-secrets set "Parameters:foundry-model" "$MODEL"
+dotnet user-secrets set "Parameters:foundry-iq-endpoint" "$SEARCH"
+dotnet user-secrets set "Parameters:foundry-iq-kb-name" "coffeeshop-kb"
+dotnet user-secrets set "Parameters:toolbox-endpoint" "${SEARCH}/knowledgebases/coffeeshop-kb/mcp?api-version=2025-11-01-preview"
+dotnet user-secrets set "Parameters:appinsights-connection-string" "$APPINSIGHTS"
+```
+
+Then run local stack:
+
+```bash
+dotnet aspire run
+```
+
+Expected path in hybrid mode:
+`claw-api (local) -> toolsearch-gateway (local) -> coffeeshop-mcp (local)`
+with Foundry model/search resources from cloud config.
+
+> Keep `azd deploy` for full cloud app deployment mode. In hybrid mode, use `azd provision` only.
+
 ---
 
 ## Cloud deployment
@@ -76,35 +124,25 @@ azd env set SLACK_SIGNING_SECRET "..."
 # Optional
 azd env set BRAVE_SEARCH_API_KEY "<key>"
 
-# Step 1: provision infra only (creates ACR, Foundry project, App Insights, etc.)
+# Step 1: provision infra (creates ACR, Foundry project, App Insights, etc.)
 azd provision
 
-# Step 2: build claw-api image and push to ACR
-#   Must happen BEFORE azd deploy — the postdeploy hook registers claw-api from this image
-ACR=$(azd env get-values | grep ^AZURE_CONTAINER_REGISTRY_NAME | cut -d= -f2 | tr -d '"')
-az acr build \
-  --registry "$ACR" \
-  --image "foundry-agentfx/claw-api-<env-name>:latest" \
-  --file src/Claw.Api/Dockerfile \
-  .
-
-# Step 3: deploy ACA services + run postdeploy hook (registers claw-api as Foundry Hosted Agent)
+# Step 2: deploy all services — ACA + Foundry Hosted Agent (claw-api) in one shot
 azd deploy
 ```
 
-**Why this order?**
-- `azd provision` creates the ACR (you need it before you can push)
-- `azd deploy` builds+pushes claw-slack/coffeeshop/gateway images, then runs `register-agent.sh`
-- `register-agent.sh` looks for the claw-api image in ACR — it must already be there
+**How it works:**
+- `azd provision` -> creates ACR + Foundry project + ACA env
+- `azd deploy` -> builds+pushes all 4 images via ACR remote build, then:
+  - deploys `claw-slack`, `coffeeshop-mcp`, `toolsearch-gateway` as Container Apps
+  - builds+pushes `claw-api` image, registers as Foundry Hosted Agent (version), waits for `active`
+- `claw-api` runs on Foundry compute, not ACA. Env vars (`Agent__Provider`, `Services__ToolSearchGateway__Url`, etc.) injected via `agent.yaml`.
 
-`claw-api` is NOT deployed by azd as a Container App. It lives on Foundry's compute. `azd deploy` only handles claw-slack, coffeeshop-mcp, toolsearch-gateway.
+Verify after deploy:
 
-After deploy, `postdeploy` hook (`register-agent.sh`) automatically:
-1. Finds latest `claw-api` image in ACR
-2. Registers it as Foundry Hosted Agent (injects `Agent__Provider=foundry`, `Agent__HostedMode=foundry`, gateway URL)
-
-> **CI/CD handles all of this automatically** — see GitHub Actions section below.
-> CI/CD handles this automatically on subsequent pushes.
+```bash
+azd ai agent show claw-api
+```
 
 ### Invoke agent (cloud)
 
@@ -115,17 +153,19 @@ ENDPOINT=$(azd env get-values | grep AZURE_AI_PROJECT_ENDPOINT | cut -d= -f2 | t
 curl -X POST "$ENDPOINT/agents/claw-api/endpoint/protocols/invocations?api-version=v1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Foundry-Features: HostedAgents=V1Preview" \
   -d '{"input":"I want a large oat milk latte"}'
 ```
 
 ### Check agent status
 
 ```bash
+azd ai agent show claw-api
+
+# Or via REST
+ENDPOINT=$(azd env get-values | grep AZURE_AI_PROJECT_ENDPOINT | cut -d= -f2 | tr -d '"')
 az rest --method GET \
-  --url "$ENDPOINT/agents/claw-api?api-version=2025-11-15-preview" \
-  --resource https://ai.azure.com \
-  --query status -o tsv
+  --url "$ENDPOINT/agents/claw-api?api-version=v1" \
+  --resource https://ai.azure.com
 ```
 
 ---
@@ -134,11 +174,10 @@ az rest --method GET \
 
 Workflow: `.github/workflows/azure-deploy.yml` — triggers on push to `main`.
 
-**4 jobs (mirrors the manual order):**
+**3 jobs:**
 1. `build-and-test` — dotnet build + test all projects
-2. `provision` — `azd provision` (creates infra; outputs ACR name + Foundry endpoint)
-3. `build-claw-api-image` — `az acr build` pushes claw-api image to ACR
-4. `deploy` — `azd deploy` (builds+pushes claw-slack/coffeeshop/gateway; postdeploy hook registers claw-api) → polls agent status → smoke test
+2. `provision` — `azd provision` (creates infra)
+3. `deploy` — `azd deploy` (builds+pushes all images; registers claw-api as Foundry Hosted Agent; polls until active) → smoke test
 
 ### Required repo variables (Settings → Actions → Variables)
 

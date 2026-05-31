@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/.git/
+**/.vs/
+**/.vscode/
+**/node_modules/
+tests/
+infra/
+.azure/
+apphost/
+data/
+*.md
+*.json
+!src/**/*.json

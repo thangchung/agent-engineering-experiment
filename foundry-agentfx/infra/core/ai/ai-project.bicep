@@ -141,6 +141,28 @@ resource userAzureAIUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01
   }
 }
 
+// ── RBAC: user/deployer → Azure AI Developer on project (needed for hosted-agent registration) ─
+
+resource userAzureAIDeveloperRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiAccount::project
+  name: guid(subscription().id, resourceGroup().id, principalId, '64702f94-c441-49e6-a78b-ef80e0188fee')
+  properties: {
+    principalId: principalId
+    principalType: principalType
+    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee') // Azure AI Developer
+  }
+}
+
+resource userFoundryProjectManagerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiAccount::project
+  name: guid(subscription().id, resourceGroup().id, principalId, 'eadc314b-1a2d-4efa-be10-5d325db5065e')
+  properties: {
+    principalId: principalId
+    principalType: principalType
+    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', 'eadc314b-1a2d-4efa-be10-5d325db5065e') // Foundry Project Manager
+  }
+}
+
 // ── Storage (required for AI Search indexer) ─────────────────────────────────
 
 module storage '../storage/storage.bicep' = if (enableSearch) {

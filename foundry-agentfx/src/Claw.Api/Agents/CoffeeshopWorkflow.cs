@@ -29,6 +29,20 @@ public sealed class CoffeeshopWorkflow(
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<CoffeeshopWorkflow>();
 
+    internal static bool IsPreviousResponseNotFound(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("previous_response_not_found", StringComparison.OrdinalIgnoreCase)
+                || current.Message.Contains("previous_response_id", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public ValueTask<AgentSession> CreateSessionAsync(CancellationToken ct = default)
         => ordering.CreateSessionAsync(ct);
 
@@ -54,6 +68,7 @@ public sealed class CoffeeshopWorkflow(
         await using StreamingRun run = await InProcessExecution.RunStreamingAsync(workflow, message);
 
         var chunkCount = 0;
+        Exception? executionError = null;
         await foreach (var evt in run.WatchStreamAsync().WithCancellation(ct))
         {
             switch (evt)
@@ -64,14 +79,36 @@ public sealed class CoffeeshopWorkflow(
                     break;
                 case WorkflowErrorEvent errEvt:
                     activity?.SetStatus(ActivityStatusCode.Error, errEvt.Exception?.Message);
-                    _logger.LogError(errEvt.Exception, "[Workflow] Error");
+                    if (errEvt.Exception is not null && IsPreviousResponseNotFound(errEvt.Exception))
+                    {
+                        _logger.LogWarning("[Workflow] Retriable stale response id detected");
+                        executionError ??= errEvt.Exception;
+                    }
+                    else
+                    {
+                        _logger.LogError(errEvt.Exception, "[Workflow] Error");
+                        executionError ??= errEvt.Exception ?? new InvalidOperationException("Workflow execution failed.");
+                    }
                     break;
                 case ExecutorFailedEvent failEvt:
                     activity?.SetStatus(ActivityStatusCode.Error, failEvt.Data?.ToString());
-                    _logger.LogError("[Workflow] Executor '{Id}' failed: {Data}", failEvt.ExecutorId, failEvt.Data);
+                    if (failEvt.Data is Exception failEx && IsPreviousResponseNotFound(failEx))
+                    {
+                        _logger.LogWarning("[Workflow] Executor '{Id}' hit retriable stale response id", failEvt.ExecutorId);
+                        executionError ??= failEx;
+                    }
+                    else
+                    {
+                        _logger.LogError("[Workflow] Executor '{Id}' failed: {Data}", failEvt.ExecutorId, failEvt.Data);
+                        executionError ??= failEvt.Data as Exception
+                            ?? new InvalidOperationException(failEvt.Data?.ToString() ?? "Workflow executor failed.");
+                    }
                     break;
             }
         }
+
+        if (executionError is not null)
+            throw executionError;
 
         activity?.SetTag("response.chunks", chunkCount);
         activity?.SetStatus(ActivityStatusCode.Ok);
@@ -102,41 +139,61 @@ internal sealed class OrderingWorkflowExecutor(
 
         logger.LogInformation("[Ordering] Starting — agent={Agent}", ordering.Name);
 
-        var pendingOrderCalls = new HashSet<string>();
         var updateCount = 0;
         var ordersSent = 0;
+        var completed = false;
 
         try
         {
-            await foreach (var update in ordering.RunStreamingAsync(message, session, ct))
+            for (var attempt = 1; attempt <= 2; attempt++)
             {
-                updateCount++;
-                await context.AddEventAsync(new AgentResponseUpdateEvent(this.Id, update), ct);
+                var pendingOrderCalls = new HashSet<string>();
+                var attemptUpdateCount = 0;
 
-                if (update.Contents is null) continue;
-
-                foreach (var content in update.Contents)
+                try
                 {
-                    if (content is FunctionCallContent call
-                        && call.Name == "call_tool"
-                        && call.Arguments?.TryGetValue("name", out var toolName) == true
-                        && toolName?.ToString() == "order_submit"
-                        && call.CallId is not null)
+                    await foreach (var update in ordering.RunStreamingAsync(message, session, ct))
                     {
-                        pendingOrderCalls.Add(call.CallId);
-                        logger.LogDebug("[Ordering] Detected order_submit call {CallId}", call.CallId);
-                        activity?.AddEvent(new ActivityEvent("order_submit.detected",
-                            tags: new ActivityTagsCollection { ["call.id"] = call.CallId }));
+                        attemptUpdateCount++;
+                        updateCount++;
+                        await context.AddEventAsync(new AgentResponseUpdateEvent(this.Id, update), ct);
+
+                        if (update.Contents is null) continue;
+
+                        foreach (var content in update.Contents)
+                        {
+                            if (content is FunctionCallContent call
+                                && call.Name == "call_tool"
+                                && call.Arguments?.TryGetValue("name", out var toolName) == true
+                                && toolName?.ToString() == "order_submit"
+                                && call.CallId is not null)
+                            {
+                                pendingOrderCalls.Add(call.CallId);
+                                logger.LogDebug("[Ordering] Detected order_submit call {CallId}", call.CallId);
+                                activity?.AddEvent(new ActivityEvent("order_submit.detected",
+                                    tags: new ActivityTagsCollection { ["call.id"] = call.CallId }));
+                            }
+                            else if (content is FunctionResultContent result
+                                && result.CallId is not null
+                                && pendingOrderCalls.Remove(result.CallId))
+                            {
+                                await TrySendOrderAsync(result, context, ct);
+                                ordersSent++;
+                            }
+                        }
                     }
-                    else if (content is FunctionResultContent result
-                        && result.CallId is not null
-                        && pendingOrderCalls.Remove(result.CallId))
-                    {
-                        await TrySendOrderAsync(result, context, ct);
-                        ordersSent++;
-                    }
+
+                    completed = true;
+                    break;
+                }
+                catch (TaskCanceledException ex) when (!ct.IsCancellationRequested && attempt == 1 && attemptUpdateCount == 0)
+                {
+                    logger.LogWarning(ex, "[Ordering] Transient cancellation before first update. Retrying once.");
                 }
             }
+
+            if (!completed)
+                throw new InvalidOperationException("Ordering stream did not complete.");
 
             activity?.SetTag("updates.count", updateCount);
             activity?.SetTag("orders.routed", ordersSent);
@@ -146,7 +203,10 @@ internal sealed class OrderingWorkflowExecutor(
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            logger.LogError(ex, "[Ordering] Failed");
+            if (CoffeeshopWorkflow.IsPreviousResponseNotFound(ex))
+                logger.LogWarning("[Ordering] Retriable stale response id detected");
+            else
+                logger.LogError(ex, "[Ordering] Failed");
             throw;
         }
     }

@@ -18,7 +18,7 @@
       "value": "${AZURE_OPENAI_MODEL_VERSION=2024-07-18}"
     },
     "skipContainerApps": {
-      "value": "${SKIP_CONTAINER_APPS=true}"
+      "value": "${SKIP_CONTAINER_APPS=false}"
     },
     "enableSearch": {
       "value": "${ENABLE_SEARCH=true}"
@@ -34,9 +34,6 @@
     },
     "braveSearchApiKey": {
       "value": "${BRAVE_SEARCH_API_KEY=}"
-    },
-    "enableHostedFoundry": {
-      "value": "${ENABLE_HOSTED_FOUNDRY=false}"
     },
     "principalId": {
       "value": "${AZURE_PRINCIPAL_ID}"

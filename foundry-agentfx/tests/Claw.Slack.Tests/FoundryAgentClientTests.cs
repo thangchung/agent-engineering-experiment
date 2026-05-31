@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Azure.Core;
 using Claw.Slack;
 using Microsoft.Extensions.Configuration;
 
@@ -58,6 +59,24 @@ public sealed class FoundryAgentClientTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ReturnsPlainText_WhenResponseIsNotJson()
+    {
+        var handler = new FakeHttpMessageHandler(_ => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("Hello from hosted agent", System.Text.Encoding.UTF8, "text/plain")
+            }));
+
+        var config = BuildConfig(new() { ["Agent:InvocationsPath"] = "/invocations" });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
+        var client = new FoundryAgentClient(http, config);
+
+        var result = await client.InvokeAsync("hello", "s1");
+
+        Assert.Equal("Hello from hosted agent", result);
+    }
+
+    [Fact]
     public async Task InvokeAsync_ThrowsOnNonSuccess()
     {
         var handler = new FakeHttpMessageHandler(_ => Task.FromResult(
@@ -93,6 +112,44 @@ public sealed class FoundryAgentClientTests
         Assert.NotNull(captured);
         Assert.StartsWith("/invocations", captured!.RequestUri!.PathAndQuery);
     }
+
+    [Fact]
+    public async Task InvokeAsync_CreatesFoundrySession_WhenTokenResourceConfigured()
+    {
+        var requests = new List<HttpRequestMessage>();
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            requests.Add(req);
+            if (requests.Count == 1)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created)
+                {
+                    Content = new StringContent("""{"agent_session_id":"foundry-session-1"}""", System.Text.Encoding.UTF8, "application/json")
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"output":"menu"}""", System.Text.Encoding.UTF8, "application/json")
+            });
+        });
+
+        var config = BuildConfig(new()
+        {
+            ["Agent:InvocationsPath"] = "agents/claw-api/endpoint/protocols/invocations?api-version=v1",
+            ["Agent:TokenResource"] = "https://ai.azure.com"
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/api/projects/project/") };
+        var client = new FoundryAgentClient(http, config, new FakeTokenCredential());
+
+        var result = await client.InvokeAsync("menu", "slack:C1:U1");
+
+        Assert.Equal("menu", result);
+        Assert.Equal(2, requests.Count);
+        Assert.Equal("/api/projects/project/agents/claw-api/endpoint/sessions?api-version=v1", requests[0].RequestUri!.PathAndQuery);
+        Assert.Equal("/api/projects/project/agents/claw-api/endpoint/protocols/invocations?api-version=v1&agent_session_id=foundry-session-1", requests[1].RequestUri!.PathAndQuery);
+        Assert.True(requests.All(r => r.Headers.Contains("Foundry-Features")));
+    }
 }
 
 internal sealed class FakeHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
@@ -101,4 +158,13 @@ internal sealed class FakeHttpMessageHandler(Func<HttpRequestMessage, Task<HttpR
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken) =>
         handler(request);
+}
+
+internal sealed class FakeTokenCredential : TokenCredential
+{
+    public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
+        new("fake-token", DateTimeOffset.UtcNow.AddHours(1));
+
+    public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(GetToken(requestContext, cancellationToken));
 }

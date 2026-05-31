@@ -5,6 +5,7 @@ using SlackNet.AspNetCore;
 using SlackNet.Events;
 using SlackNet.WebApi;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 public sealed class SlackMessageHandler(
     FoundryAgentClient agent,
@@ -15,6 +16,9 @@ public sealed class SlackMessageHandler(
 {
     private static readonly System.Diagnostics.ActivitySource ActivitySource =
         new("Claw.Slack");
+
+    private static readonly Regex SlackLabeledLinkRegex = new(@"<[^>|]+\|([^>]+)>", RegexOptions.Compiled);
+    private static readonly Regex SlackAngleLinkRegex = new(@"<([^>]+)>", RegexOptions.Compiled);
 
     private readonly string _botUserId = config["Slack:BotUserId"] ?? "";
     private readonly string _policy = config["Slack:Policy"] ?? "open";
@@ -39,10 +43,13 @@ public sealed class SlackMessageHandler(
             return;
         }
 
-        var sessionId = $"slack:dm:{e.User}";
-        logger.LogInformation("[Slack] DM from {User}: {Preview}", e.User, e.Text[..Math.Min(80, e.Text.Length)]);
+        var text = NormalizeSlackText(e.Text);
+        if (string.IsNullOrWhiteSpace(text)) return;
 
-        var reply = await agent.InvokeAsync(e.Text, sessionId, default);
+        var sessionId = $"slack:dm:{e.User}";
+        logger.LogInformation("[Slack] DM from {User}: {Preview}", e.User, text[..Math.Min(80, text.Length)]);
+
+        var reply = await agent.InvokeAsync(text, sessionId, default);
         if (string.IsNullOrWhiteSpace(reply)) return;
 
         await slack.Chat.PostMessage(new Message
@@ -73,7 +80,7 @@ public sealed class SlackMessageHandler(
             return;
         }
 
-        var text = StripMention(e.Text);
+        var text = NormalizeSlackText(StripMention(e.Text));
         if (string.IsNullOrWhiteSpace(text)) return;
 
         var sessionId = $"slack:{e.Channel}:{e.User}";
@@ -105,6 +112,14 @@ public sealed class SlackMessageHandler(
     {
         var end = text.IndexOf('>');
         return end >= 0 ? text[(end + 1)..].Trim() : text.Trim();
+    }
+
+    private static string NormalizeSlackText(string text)
+    {
+        var normalized = SlackLabeledLinkRegex.Replace(text, "$1");
+        normalized = SlackAngleLinkRegex.Replace(normalized, "$1");
+        normalized = normalized.Replace("mailto:", string.Empty, StringComparison.OrdinalIgnoreCase);
+        return normalized.Trim();
     }
 
     private static string TruncateSlack(string text) =>

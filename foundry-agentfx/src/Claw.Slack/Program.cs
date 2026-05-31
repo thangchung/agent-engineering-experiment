@@ -6,8 +6,7 @@ builder.AddServiceDefaults();
 
 builder.Services.AddHttpClient<FoundryAgentClient>(client =>
 {
-    var baseUrl = builder.Configuration["Agent:BaseUrl"]
-        ?? "http://localhost:5000";
+    var baseUrl = (builder.Configuration["Agent:BaseUrl"] ?? "http://localhost:5000").TrimEnd('/') + "/";
     client.BaseAddress = new Uri(baseUrl);
 });
 

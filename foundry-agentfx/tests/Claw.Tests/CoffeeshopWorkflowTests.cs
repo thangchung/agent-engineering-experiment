@@ -43,6 +43,29 @@ public class CoffeeshopWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task Workflow_Retries_Once_On_Transient_PreUpdate_Cancellation()
+    {
+        var updates = new[]
+        {
+            MakeTextUpdate("Recovered"),
+            MakeTextUpdate(" response"),
+        };
+
+        var ordering = new FlakyOrderingAgent(updates);
+        var workflow = new CoffeeshopWorkflow(ordering, CreateAuditConfig(), NullLoggerFactory.Instance);
+        var session = await workflow.CreateSessionAsync();
+
+        var result = new List<string>();
+        await foreach (var update in workflow.RunStreamingAsync("hi", session))
+        {
+            if (!string.IsNullOrEmpty(update.Text))
+                result.Add(update.Text);
+        }
+
+        Assert.Equal(["Recovered", " response"], result);
+    }
+
+    [Fact]
     public async Task Workflow_Triggers_Audit_On_OrderSubmit_Result()
     {
         var order = new OrderResult(
@@ -126,6 +149,32 @@ internal sealed class FakeOrderingAgent(AgentResponseUpdate[] updates) : IOrderi
         AgentSession session,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        foreach (var u in updates)
+        {
+            await Task.Yield();
+            yield return u;
+        }
+    }
+}
+
+internal sealed class FlakyOrderingAgent(AgentResponseUpdate[] updates) : IOrderingAgent
+{
+    private int _runCount;
+
+    public string Name => "FlakyOrderingAgent";
+
+    public ValueTask<AgentSession> CreateSessionAsync(CancellationToken ct = default)
+        => ValueTask.FromResult<AgentSession>(new FakeSession());
+
+    public async IAsyncEnumerable<AgentResponseUpdate> RunStreamingAsync(
+        string message,
+        AgentSession session,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        _runCount++;
+        if (_runCount == 1)
+            throw new TaskCanceledException("Transient stream failure");
+
         foreach (var u in updates)
         {
             await Task.Yield();

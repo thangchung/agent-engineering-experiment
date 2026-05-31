@@ -34,9 +34,6 @@ param toolboxEndpoint string = ''
 @secure()
 param braveSearchApiKey string = ''
 
-@description('Deploy claw-api as Foundry Hosted Agent instead of Container App. Requires azd ai agent extension.')
-param enableHostedFoundry bool = false
-
 @secure()
 param slackBotToken string = ''
 @secure()
@@ -95,7 +92,7 @@ module aiProject 'core/ai/ai-project.bicep' = {
 
 // ── Container Apps (skippable for local dev) ─────────────────────────────────
 
-module containerApps 'modules/container-apps.bicep' = if (skipContainerApps != 'true') {
+module containerApps 'modules/container-apps.bicep' = if (toLower(skipContainerApps) != 'true') {
   name: 'container-apps'
   scope: rg
   params: {
@@ -108,17 +105,15 @@ module containerApps 'modules/container-apps.bicep' = if (skipContainerApps != '
     containerRegistryResourceId: containerRegistry.outputs.registryId
     foundryProjectEndpoint: aiProject.outputs.AZURE_AI_PROJECT_ENDPOINT
     foundryProjectResourceId: aiProject.outputs.projectId
-    foundryModel: modelDeploymentName
+    foundryAccountName: aiProject.outputs.aiServicesAccountName
     foundryIqEndpoint: !empty(foundryIqEndpoint) ? foundryIqEndpoint : aiProject.outputs.searchEndpoint
     foundryIqKbName: foundryIqKbName
     toolboxEndpoint: !empty(toolboxEndpoint) ? toolboxEndpoint : '${aiProject.outputs.searchEndpoint}/knowledgebases/${foundryIqKbName}/mcp?api-version=2025-11-01-preview'
     braveSearchApiKey: braveSearchApiKey
-    enableHostedFoundry: enableHostedFoundry
     slackBotToken: slackBotToken
     slackAppToken: slackAppToken
     slackSigningSecret: slackSigningSecret
   }
-  dependsOn: [containerRegistry, aiProject]
 }
 
 // ── Outputs ───────────────────────────────────────────────────────────────────
@@ -146,6 +141,6 @@ output AZURE_AI_SEARCH_KB_MCP_CONNECTION_NAME string = aiProject.outputs.kbMcpCo
 output AZURE_STORAGE_ACCOUNT_NAME string = aiProject.outputs.storageAccountName
 
 // Container Apps (empty when skipped or hosted)
-output CLAW_SLACK_URL string = skipContainerApps != 'true' ? containerApps!.outputs.clawSlackUrl : ''
-output COFFEESHOP_MCP_URL string = skipContainerApps != 'true' ? containerApps!.outputs.coffeeshopMcpUrl : ''
-output TOOLSEARCH_GATEWAY_URL string = skipContainerApps != 'true' ? containerApps!.outputs.toolsearchGatewayUrl : ''
+output CLAW_SLACK_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.clawSlackUrl : ''
+output COFFEESHOP_MCP_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.coffeeshopMcpUrl : ''
+output TOOLSEARCH_GATEWAY_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.toolsearchGatewayUrl : ''

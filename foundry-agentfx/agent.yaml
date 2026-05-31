@@ -1,0 +1,14 @@
+kind: hosted
+name: claw-api
+protocols:
+    - protocol: invocations
+      version: 1.0.0
+environment:
+    ASPNETCORE_HTTP_PORTS: "8080"
+    ASPNETCORE_ENVIRONMENT: Production
+    Agent__Provider: foundry
+    Agent__HostedMode: foundry
+    Foundry__Endpoint: ${AZURE_AI_PROJECT_ENDPOINT}
+    AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "true"
+    Services__ToolSearchGateway__Url: ${TOOLSEARCH_GATEWAY_URL}

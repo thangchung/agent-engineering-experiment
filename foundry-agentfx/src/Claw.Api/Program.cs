@@ -13,6 +13,14 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Foundry platform injects PORT env var; respect it so /readiness is reachable
+// v16: force rebuild with correct ToolSearch Gateway URL
+var foundryPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(foundryPort) && int.TryParse(foundryPort, out var portNum))
+{
+    builder.WebHost.UseUrls($"http://*:{portNum}");
+}
+
 var isHostedMode = string.Equals(
     builder.Configuration["Agent:HostedMode"], "foundry",
     StringComparison.OrdinalIgnoreCase);
@@ -154,7 +162,8 @@ builder.Services.AddSingleton<CoffeeshopWorkflow>();
 if (isHostedMode)
 {
     builder.Services.AddInvocationsServer();
-    builder.Services.AddScoped<InvocationHandler, CoffeeshopInvocationHandler>();
+    builder.Services.AddScoped<CoffeeshopInvocationHandler>();
+    builder.Services.AddScoped<InvocationHandler>(sp => sp.GetRequiredService<CoffeeshopInvocationHandler>());
 }
 
 builder.Services.AddOpenApi();
@@ -162,6 +171,9 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
+
+// Override /readiness with simplest possible endpoint for Foundry
+app.MapGet("/readiness", () => Results.Ok());
 
 if (app.Environment.IsDevelopment())
 {
@@ -174,6 +186,30 @@ app.MapWebChannel();
 // Map /invocations endpoint when in hosted mode (DI registered above)
 if (isHostedMode)
 {
+    app.MapPost("/", async (
+        HttpRequest request,
+        HttpResponse response,
+        CoffeeshopInvocationHandler handler,
+        CancellationToken cancellationToken) =>
+    {
+        var invocationId = request.Headers.TryGetValue("x-agent-invocation-id", out var invocationHeader)
+            && !string.IsNullOrWhiteSpace(invocationHeader)
+            ? invocationHeader.ToString()
+            : Guid.NewGuid().ToString("N");
+
+        var sessionId = request.Headers.TryGetValue("x-agent-session-id", out var sessionHeader)
+            && !string.IsNullOrWhiteSpace(sessionHeader)
+            ? sessionHeader.ToString()
+            : request.Query.TryGetValue("agent_session_id", out var querySessionId)
+                && !string.IsNullOrWhiteSpace(querySessionId)
+                ? querySessionId.ToString()
+                : Environment.GetEnvironmentVariable("FOUNDRY_AGENT_SESSION_ID") ?? $"invocation:{invocationId}";
+
+        response.Headers["x-agent-invocation-id"] = invocationId;
+        response.Headers["x-agent-session-id"] = sessionId;
+        await handler.HandleDirectAsync(request, response, invocationId, sessionId, cancellationToken);
+    });
+
     app.MapInvocationsServer();
 }
 

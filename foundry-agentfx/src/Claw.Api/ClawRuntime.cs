@@ -8,6 +8,8 @@ using Microsoft.Agents.AI;
 
 public sealed class ClawRuntime(CoffeeshopWorkflow workflow, ILogger<ClawRuntime> logger)
 {
+    private const string EmptyReplyFallback = "Sorry, I did not get a response. Please try again.";
+
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
@@ -101,23 +103,42 @@ public sealed class ClawRuntime(CoffeeshopWorkflow workflow, ILogger<ClawRuntime
         await sem.WaitAsync(ct);
         try
         {
-            logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
-
-            var sb = new System.Text.StringBuilder();
-            await foreach (var update in workflow.RunStreamingAsync(message, session, ct))
+            for (var attempt = 1; attempt <= 2; attempt++)
             {
-                if (!string.IsNullOrEmpty(update.Text))
-                    sb.Append(update.Text);
+                try
+                {
+                    logger.LogDebug("[{Session}] → {Preview}", sessionId, message[..Math.Min(80, message.Length)]);
+
+                    var sb = new System.Text.StringBuilder();
+                    await foreach (var update in workflow.RunStreamingAsync(message, session, ct))
+                    {
+                        if (!string.IsNullOrEmpty(update.Text))
+                            sb.Append(update.Text);
+                    }
+                    var response = sb.ToString();
+
+                    if (string.IsNullOrWhiteSpace(response))
+                    {
+                        logger.LogWarning("[{Session}] Empty model response; returning fallback", sessionId);
+                        response = EmptyReplyFallback;
+                    }
+
+                    activity?.SetTag("response.length", response.Length);
+                    activity?.SetStatus(ActivityStatusCode.Ok);
+                    ClawTelemetry.ResponseLengthChars.Record(response.Length,
+                        new KeyValuePair<string, object?>("channel", channel),
+                        new KeyValuePair<string, object?>("streaming", false));
+
+                    return response;
+                }
+                catch (Exception ex) when (attempt == 1 && IsPreviousResponseNotFound(ex))
+                {
+                    logger.LogWarning(ex, "[{Session}] Stale previous response id. Resetting session and retrying once.", sessionId);
+                    session = await ResetSessionAsync(sessionId, ct);
+                }
             }
-            var response = sb.ToString();
 
-            activity?.SetTag("response.length", response.Length);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            ClawTelemetry.ResponseLengthChars.Record(response.Length,
-                new KeyValuePair<string, object?>("channel", channel),
-                new KeyValuePair<string, object?>("streaming", false));
-
-            return response;
+            throw new InvalidOperationException("Agent request did not complete after retry.");
         }
         catch (Exception ex)
         {
@@ -145,6 +166,27 @@ public sealed class ClawRuntime(CoffeeshopWorkflow workflow, ILogger<ClawRuntime
         var newSession = await workflow.CreateSessionAsync(ct);
         var session = _sessions.GetOrAdd(sessionId, newSession);
         return (session, ReferenceEquals(session, newSession));
+    }
+
+    private async ValueTask<AgentSession> ResetSessionAsync(string sessionId, CancellationToken ct)
+    {
+        var newSession = await workflow.CreateSessionAsync(ct);
+        _sessions.AddOrUpdate(sessionId, newSession, (_, _) => newSession);
+        return newSession;
+    }
+
+    private static bool IsPreviousResponseNotFound(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("previous_response_not_found", StringComparison.OrdinalIgnoreCase)
+                || current.Message.Contains("previous_response_id", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetChannelFromSessionId(string sessionId)

@@ -1,44 +1,52 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
 name: foundry-agentfx
 metadata:
-  template: foundry-agentfx@0.1.0
-
-infra:
-  provider: bicep
-  path: infra
-
+    template: foundry-agentfx@0.1.0
 services:
-  # claw-api is a Foundry Hosted Agent — image built via ACR and registered via register-agent.sh
-  # It is NOT deployed as a Container App by azd.
-  # Build: az acr build -t foundry-agentfx/claw-api-${AZURE_ENV_NAME}:latest -r ${ACR_NAME} . --file src/Claw.Api/Dockerfile
-
-  claw-slack:
-    project: src/Claw.Slack
-    language: dotnet
-    host: containerapp
-    docker:
-      path: src/Claw.Slack/Dockerfile
-      context: .
-
-  coffeeshop-mcp:
-    project: src/Coffeeshop.Mcp
-    language: dotnet
-    host: containerapp
-    docker:
-      path: src/Coffeeshop.Mcp/Dockerfile
-      context: .
-
-  toolsearch-gateway:
-    project: src/ToolSearch.Gateway
-    language: dotnet
-    host: containerapp
-    docker:
-      path: src/ToolSearch.Gateway/Dockerfile
-      context: .
-
+    claw-api:
+        project: .
+        host: azure.ai.agent
+        language: docker
+        docker:
+            path: src/Claw.Api/Dockerfile
+            context: .
+            remoteBuild: true
+        config:
+            container:
+                resources:
+                    cpu: "1"
+                    memory: 2Gi
+    claw-slack:
+        project: .
+        host: containerapp
+        language: docker
+        docker:
+            path: src/Claw.Slack/Dockerfile
+            context: .
+            remoteBuild: true
+    coffeeshop-mcp:
+        project: .
+        host: containerapp
+        language: docker
+        docker:
+            path: src/Coffeeshop.Mcp/Dockerfile
+            context: .
+            remoteBuild: true
+    toolsearch-gateway:
+        project: .
+        host: containerapp
+        language: docker
+        docker:
+            path: src/ToolSearch.Gateway/Dockerfile
+            context: .
+            remoteBuild: true
+infra:
+    provider: bicep
+    path: infra
 hooks:
-  postprovision:
-    shell: sh
-    run: infra/hooks/postprovision.sh
-  postdeploy:
-    shell: sh
-    run: infra/hooks/register-agent.sh
+    postprovision:
+        name: postprovision
+        kind: sh
+        shell: sh
+        run: infra/hooks/postprovision.sh

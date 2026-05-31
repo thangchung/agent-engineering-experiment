@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Claw.Slack.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.*" />
     <PackageReference Include="SlackNet" Version="0.17.9" />
     <PackageReference Include="SlackNet.AspNetCore" Version="0.17.9" />

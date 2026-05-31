@@ -7,10 +7,10 @@ namespace Claw.Api.Agents;
 
 /// <summary>
 /// Handles Foundry Hosted Agent invocation requests.
-/// Bridges the Foundry Invocations protocol to CoffeeshopWorkflow.
+/// Bridges the Foundry Invocations protocol to ClawRuntime session handling.
 /// </summary>
 public sealed class CoffeeshopInvocationHandler(
-    CoffeeshopWorkflow workflow,
+    ClawRuntime runtime,
     ILogger<CoffeeshopInvocationHandler> logger) : InvocationHandler
 {
     private static readonly JsonSerializerOptions _jsonOpts = new(JsonSerializerDefaults.Web);
@@ -19,6 +19,25 @@ public sealed class CoffeeshopInvocationHandler(
         HttpRequest request,
         HttpResponse response,
         InvocationContext context,
+        CancellationToken cancellationToken)
+    {
+        var sessionId = ResolveSessionId(request, context.SessionId);
+        await HandleCoreAsync(request, response, context.InvocationId, sessionId, cancellationToken);
+    }
+
+    public async Task HandleDirectAsync(
+        HttpRequest request,
+        HttpResponse response,
+        string invocationId,
+        string sessionId,
+        CancellationToken cancellationToken) =>
+        await HandleCoreAsync(request, response, invocationId, sessionId, cancellationToken);
+
+    private async Task HandleCoreAsync(
+        HttpRequest request,
+        HttpResponse response,
+        string invocationId,
+        string sessionId,
         CancellationToken cancellationToken)
     {
         // Parse input from request body: {"input": "..."} or plain text
@@ -52,21 +71,17 @@ public sealed class CoffeeshopInvocationHandler(
 
         try
         {
-            // Create a new session per invocation (stateless protocol)
-            var session = await workflow.CreateSessionAsync(cancellationToken);
+            logger.LogInformation("[Invocation] Using sessionId={SessionId}", sessionId);
 
-            var sb = new StringBuilder();
-            await foreach (var update in workflow.RunStreamingAsync(input, session, cancellationToken))
-            {
-                if (update.Text is { Length: > 0 } text)
-                    sb.Append(text);
-            }
-
-            var result = sb.ToString();
+            var result = await runtime.HandleAsync(sessionId, input, cancellationToken);
             logger.LogInformation("[Invocation] Completed response length={Len}", result.Length);
 
             response.ContentType = "text/plain";
             await response.WriteAsync(result, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("[Invocation] Request canceled by caller");
         }
         catch (Exception ex)
         {
@@ -74,5 +89,18 @@ public sealed class CoffeeshopInvocationHandler(
             response.StatusCode = StatusCodes.Status500InternalServerError;
             await response.WriteAsync($"Error: {ex.Message}", cancellationToken);
         }
+    }
+
+    private static string ResolveSessionId(HttpRequest request, string fallback)
+    {
+        if (request.Query.TryGetValue("agent_session_id", out var querySessionId)
+            && !string.IsNullOrWhiteSpace(querySessionId))
+        {
+            return querySessionId.ToString();
+        }
+
+        return !string.IsNullOrWhiteSpace(fallback)
+            ? fallback
+            : $"invocation:{Guid.NewGuid():N}";
     }
 }
