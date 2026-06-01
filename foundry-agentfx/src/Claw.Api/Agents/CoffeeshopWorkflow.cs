@@ -177,8 +177,14 @@ internal sealed class OrderingWorkflowExecutor(
                                 && result.CallId is not null
                                 && pendingOrderCalls.Remove(result.CallId))
                             {
-                                await TrySendOrderAsync(result, context, ct);
-                                ordersSent++;
+                                var order = await TrySendOrderAsync(result, context, ct);
+                                if (order is not null)
+                                {
+                                    await context.AddEventAsync(new AgentResponseUpdateEvent(
+                                        this.Id,
+                                        new AgentResponseUpdate(ChatRole.Assistant, FormatOrderConfirmation(order))), ct);
+                                    ordersSent++;
+                                }
                             }
                         }
                     }
@@ -211,24 +217,42 @@ internal sealed class OrderingWorkflowExecutor(
         }
     }
 
-    private async ValueTask TrySendOrderAsync(
+    private async ValueTask<OrderResult?> TrySendOrderAsync(
         FunctionResultContent result, IWorkflowContext context, CancellationToken ct)
     {
         try
         {
             var json = result.Result?.ToString();
-            if (string.IsNullOrWhiteSpace(json)) return;
+            if (string.IsNullOrWhiteSpace(json)) return null;
+
+            // Skip if text doesn't look like JSON
+            var trimmed = json.AsSpan().TrimStart();
+            if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '['))
+            {
+                logger.LogDebug("[Ordering] Tool result not JSON; skipping OrderResult parse: {Preview}",
+                    json.Length > 50 ? json[..50] : json);
+                return null;
+            }
 
             var order = JsonSerializer.Deserialize<OrderResult>(json, _jsonOpts);
-            if (order is null || string.IsNullOrEmpty(order.OrderId)) return;
+            if (order is null || string.IsNullOrEmpty(order.OrderId)) return null;
 
             logger.LogDebug("[Ordering] Routing OrderResult {OrderId} → audit", order.OrderId);
             await context.SendMessageAsync(order, cancellationToken: ct);
+            return order;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[Workflow] Failed to parse OrderResult: {Message}", ex.Message);
+            return null;
         }
+    }
+
+    private static string FormatOrderConfirmation(OrderResult order)
+    {
+        var total = order.Total.ToString("F2", CultureInfo.InvariantCulture);
+        var items = string.Join(", ", order.Items.Select(i => $"{i.Quantity} x {i.MenuItemName}"));
+        return $"Order placed: {items}. Total ${total}. Order ID: {order.OrderId}.";
     }
 }
 

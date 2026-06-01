@@ -128,8 +128,33 @@ public sealed class CoffeeshopMcpSession
         JsonDocument doc = JsonDocument.Parse(json);
 
         if (doc.RootElement.TryGetProperty("result", out JsonElement result))
-            return result;
-        return doc.RootElement;
+            return NormalizeMcpResult(result);
+        return doc.RootElement.Clone();
+    }
+
+    private static JsonElement NormalizeMcpResult(JsonElement result)
+    {
+        if (!result.TryGetProperty("content", out JsonElement content)
+            || content.ValueKind != JsonValueKind.Array
+            || content.GetArrayLength() == 0
+            || !content[0].TryGetProperty("text", out JsonElement textElement))
+        {
+            return result.Clone();
+        }
+
+        var text = textElement.GetString();
+        if (string.IsNullOrWhiteSpace(text))
+            return result.Clone();
+
+        try
+        {
+            using var parsed = JsonDocument.Parse(text);
+            return parsed.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.SerializeToElement(text);
+        }
     }
 
     private static string ExtractSseData(string sseBody)

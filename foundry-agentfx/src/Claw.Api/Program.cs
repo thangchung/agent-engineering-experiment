@@ -10,6 +10,7 @@ using Microsoft.Extensions.AI;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Scalar.AspNetCore;
+// UseAIContextProviders extension is in Microsoft.Extensions.AI namespace via Microsoft.Agents.AI
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,7 +47,8 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     var toolSearch = sp.GetRequiredService<IToolSearchClient>();
     var mind = sp.GetRequiredService<MindLoader>();
     var config = sp.GetRequiredService<IConfiguration>();
-    var startupLog = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Claw.Api.Startup");
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+    var startupLog = loggerFactory.CreateLogger("Claw.Api.Startup");
 
     var systemMessage = mind.LoadSystemMessageAsync().GetAwaiter().GetResult();
     var provider = config["Agent:Provider"] ?? "copilot";
@@ -72,6 +74,44 @@ builder.Services.AddSingleton<AIAgent>(sp =>
                 await toolSearch.CallToolAsync(name, arguments, ct),
             "call_tool",
             "Invoke a discovered tool by name with its arguments. ALWAYS call search_tools first to find the tool name and schema, then call this."),
+
+        // Memory tools — agent infrastructure, write directly to mind/.working-memory/
+        // NOT routed through gateway: need local filesystem access + always-on (no discovery needed)
+        AIFunctionFactory.Create(
+            async (
+                [System.ComponentModel.Description("A durable fact to remember, e.g. 'User's usual order is oat latte'")] string fact,
+                CancellationToken ct = default) =>
+            {
+                var path = Path.Combine(mind.MindRoot, ".working-memory", "memory.md");
+                await File.AppendAllTextAsync(path, $"\n- {fact}", ct);
+                return "Fact saved.";
+            },
+            "SaveFact",
+            "Save a durable fact to persistent memory. Call immediately when user shares a preference, name, setting, or any detail worth remembering across sessions."),
+
+        AIFunctionFactory.Create(
+            async (
+                [System.ComponentModel.Description("A behavioral rule to remember, e.g. 'Never re-ask for email if already provided'")] string rule,
+                CancellationToken ct = default) =>
+            {
+                var path = Path.Combine(mind.MindRoot, ".working-memory", "rules.md");
+                await File.AppendAllTextAsync(path, $"\n- {rule}", ct);
+                return "Rule saved.";
+            },
+            "AddRule",
+            "Save a behavioral correction or preference as a persistent rule. Call when user corrects your behavior or states how they want you to respond."),
+
+        AIFunctionFactory.Create(
+            async (
+                [System.ComponentModel.Description("Session log entry, e.g. 'Session: user ordered 2 oat lattes, order confirmed, ID=abc'")] string entry,
+                CancellationToken ct = default) =>
+            {
+                var path = Path.Combine(mind.MindRoot, ".working-memory", "log.md");
+                await File.AppendAllTextAsync(path, $"\n- [{DateTime.UtcNow:yyyy-MM-dd HH:mm}] {entry}", ct);
+                return "Log entry appended.";
+            },
+            "AppendLog",
+            "Append a session observation to the persistent log. Call at session start, on task completion, and before ending — write what was done, pending items, next steps."),
     };
 
     foreach (var tool in tools.OfType<AIFunction>())
@@ -80,6 +120,13 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     startupLog.LogInformation("[Agent] Total tools: {Count}", tools.Count);
 
     var functionTools = tools.OfType<AIFunction>().ToList();
+
+    // Skills provider: loads SKILL.md files from mind/skills/ at startup (file-based, no scripts needed)
+    var skillsDir = Path.Combine(AppContext.BaseDirectory, "mind", "skills");
+#pragma warning disable MAAI001
+    var skillsProvider = new AgentSkillsProvider(skillsDir, null, null, null, loggerFactory);
+#pragma warning restore MAAI001
+    startupLog.LogInformation("[Agent] Skills directory: {Path}", skillsDir);
 
     if (string.Equals(provider, "foundry", StringComparison.OrdinalIgnoreCase))
     {
@@ -98,7 +145,10 @@ builder.Services.AddSingleton<AIAgent>(sp =>
             model: model,
             instructions: systemMessage,
             name: "ClawAgent",
-            tools: tools);
+            tools: tools,
+            clientFactory: chatClient => chatClient.AsBuilder()
+                .UseAIContextProviders(skillsProvider)
+                .Build());
         var otelAgent = new OpenTelemetryAgent(foundryAgent, ClawTelemetry.ActivitySourceName);
         otelAgent.EnableSensitiveData = sp.GetRequiredService<IHostEnvironment>().IsDevelopment();
         return otelAgent;
@@ -153,7 +203,9 @@ builder.Services.AddSingleton<ClawRuntime>();
 builder.Services.AddSingleton<IOrderingAgent>(sp =>
 {
     var agent = sp.GetRequiredService<AIAgent>();
-    return new FoundryOrderingAgent(agent);
+    var logger = sp.GetRequiredService<ILogger<RetryOrderingAgent>>();
+    var innerAgent = new FoundryOrderingAgent(agent);
+    return new RetryOrderingAgent(innerAgent, logger);
 });
 
 builder.Services.AddSingleton<CoffeeshopWorkflow>();
@@ -214,6 +266,55 @@ if (isHostedMode)
 }
 
 app.Run();
+
+file sealed class RetryOrderingAgent(IOrderingAgent inner, ILogger logger) : IOrderingAgent
+{
+    public string Name => inner.Name;
+    public ValueTask<AgentSession> CreateSessionAsync(CancellationToken ct = default) => inner.CreateSessionAsync(ct);
+
+    public async IAsyncEnumerable<AgentResponseUpdate> RunStreamingAsync(
+        string message, AgentSession session, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        const int maxAttempts = 5;
+        List<AgentResponseUpdate> buffer = [];
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            buffer.Clear();
+
+            try
+            {
+                await foreach (var update in inner.RunStreamingAsync(message, session, ct))
+                    buffer.Add(update);
+                break; // success
+            }
+            catch (Exception ex) when (IsTooManyRequests(ex) && attempt < maxAttempts)
+            {
+                var delayMs = (int)Math.Pow(2, attempt) * 1000; // 2s, 4s, 8s, 16s
+                logger.LogWarning(ex, "[Retry] 429 Too Many Requests — attempt {Attempt}/{Max}, delay {Delay}ms", attempt, maxAttempts, delayMs);
+                await Task.Delay(delayMs, ct);
+            }
+        }
+
+        // yield outside try-catch
+        foreach (var update in buffer)
+            yield return update;
+    }
+
+    private static bool IsTooManyRequests(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is HttpRequestException hre && hre.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                return true;
+            if (current.Message.Contains("429", StringComparison.Ordinal)
+                || current.Message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase)
+                || current.Message.Contains("TooManyRequests", StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+}
 
 file sealed class FoundryOrderingAgent(AIAgent inner) : IOrderingAgent
 {

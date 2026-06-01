@@ -75,10 +75,19 @@ app.MapPost("/api/call-tool", async (
     CallToolRequest req,
     MetaTools metaTools,
     UserContext context,
-    CancellationToken ct) =>
+    CancellationToken ct,
+    ILogger<Program> logger) =>
 {
-    var result = await metaTools.CallToolAsync(req.Name, req.Arguments, context, ct);
-    return Results.Ok(result);
+    try
+    {
+        var result = await metaTools.CallToolAsync(req.Name, req.Arguments, context, ct);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[Gateway] call-tool failed for {Name}: {Message}", req.Name, ex.Message);
+        return Results.Problem(ex.Message, statusCode: 500);
+    }
 });
 
 await app.RunAsync();

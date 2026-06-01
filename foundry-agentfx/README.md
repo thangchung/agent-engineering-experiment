@@ -9,13 +9,24 @@ Coffeeshop AI agent. **4 services** wired via Aspire:
 | **Claw.Api** | AI brain — MAF + Foundry provider, `/invocations` endpoint | Foundry Hosted Agent |
 | **Claw.Slack** | Thin Slack adapter — Socket Mode → Foundry → reply | ACA |
 
-```
-Slack ──► Claw.Slack ──► Foundry Hosted Agent (claw-api)
-Browser ──► /api/chat ─────────────────────────────┘
-                              │
-                    ToolSearch.Gateway (public FQDN)
-                         │           │
-                  Coffeeshop.Mcp   Foundry IQ / Toolbox (optional)
+```mermaid
+graph LR
+    Slack["Slack"]
+    Browser["Browser"]
+    Slack -->|Socket Mode| SlackAdapter["Claw.Slack"]
+    Browser -->|/api/chat| SlackAdapter
+    SlackAdapter -->|invoke| Agent["Foundry Hosted Agent<br/>claw-api"]
+    Agent -->|search_tools<br/>call_tool| Gateway["ToolSearch.Gateway<br/>public FQDN"]
+    Gateway -->|tool execution| Coffeeshop["Coffeeshop.Mcp"]
+    Gateway -->|optional| Toolbox["Foundry IQ /<br/>Toolbox"]
+    
+    style Slack fill:#36c5f0,color:#fff
+    style Browser fill:#36c5f0,color:#fff
+    style SlackAdapter fill:#ff9900,color:#fff
+    style Agent fill:#4a90e2,color:#fff
+    style Gateway fill:#f5a623,color:#fff
+    style Coffeeshop fill:#7ed321,color:#000
+    style Toolbox fill:#bd10e0,color:#fff
 ```
 
 ---
@@ -25,6 +36,14 @@ Browser ──► /api/chat ─────────────────�
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - `dotnet workload install aspire`
 - [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) + [azd](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+
+### VS Code autocomplete (local)
+
+This repo includes `.vscode/extensions.json` + `.vscode/settings.json` for C# IntelliSense.
+
+1. Install recommended extensions when VS Code prompts (`ms-dotnettools.csdevkit`, `ms-dotnettools.csharp`).
+2. Run `dotnet restore foundry-agentfx.slnx`.
+3. Reload VS Code window.
 
 ---
 
@@ -215,7 +234,76 @@ az ad app federated-credential create --id $CLIENT_ID --parameters '{
 
 ---
 
-## Project structure
+## Agent Mind & Skills
+
+`Claw.Api` loads its identity, behavioral rules, skills, and working memory at startup from `src/Claw.Api/mind/`:
+
+```
+mind/
+├── SOUL.md                          # Identity + personality (loaded first)
+├── .github/agents/
+│   └── coffeeshop.agent.md          # Behavioral instructions: tool usage, skill routing,
+│                                    # memory tools (MANDATORY section)
+├── .working-memory/
+│   ├── memory.md                    # Durable facts (appended by SaveFact)
+│   ├── rules.md                     # Behavioral rules (appended by AddRule)
+│   └── log.md                       # Session log (appended by AppendLog)
+└── skills/
+    ├── coffeeshop-counter-service/SKILL.md   # End-to-end order flow playbook
+    ├── coffeeshop-customer-lookup/SKILL.md   # Customer identity resolution
+    └── coffeeshop-menu-guide/SKILL.md        # Menu browse + recommendations
+```
+
+### How it loads
+
+`MindLoader` concatenates: `SOUL.md` → `.github/agents/*.agent.md` → `.working-memory/` → system message.
+
+Skills use MAF `AgentSkillsProvider` (file-based, no scripts). At startup, skill names + descriptions are advertised in the system prompt. Full playbook content is loaded on demand via the `load_skill` tool (progressive disclosure → token savings).
+
+Foundry path wires skills into the chat client pipeline:
+```csharp
+clientFactory: chatClient => chatClient.AsBuilder()
+    .UseAIContextProviders(skillsProvider)
+    .Build()
+```
+
+### Memory tools
+
+Agent has 3 always-on tools registered directly in `Claw.Api` (not routed through gateway — need local fs access):
+
+| Tool | Writes to | Trigger |
+|------|-----------|---------|
+| `SaveFact(fact)` | `memory.md` | User shares preference/name/setting |
+| `AddRule(rule)` | `rules.md` | User corrects agent behavior |
+| `AppendLog(entry)` | `log.md` | Session start, task done, handover |
+
+Working memory persists across restarts. Loaded into system prompt every session start.
+
+### Tool routing summary
+
+```mermaid
+graph LR
+    Agent["🧠 Agent Context"]
+    
+    Agent -->|search_tools, call_tool| Gateway["ToolSearch.Gateway"]
+    Agent -->|SaveFact, AddRule, AppendLog| Memory["📝 mind/.working-memory"]
+    Agent -->|load_skill| Skills["🛠️ AgentSkillsProvider"]
+    
+    Gateway -->|menu, order, customer| Coffeeshop["Coffeeshop.Mcp"]
+    Gateway -->|web_search| Brave["🔍 Brave Search"]
+    Gateway -->|Foundry IQ, Toolbox| Foundry["📊 Azure Foundry"]
+    
+    Memory --> MemFile["💾 memory.md"]
+    Memory --> RulesFile["📋 rules.md"]
+    Memory --> LogFile["📖 log.md"]
+    
+    style Agent fill:#4a90e2,color:#fff
+    style Gateway fill:#f5a623,color:#fff
+    style Memory fill:#7ed321,color:#000
+    style Skills fill:#bd10e0,color:#fff
+```
+
+
 
 ```
 foundry-agentfx/
