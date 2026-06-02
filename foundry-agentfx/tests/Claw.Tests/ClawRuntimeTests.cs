@@ -4,6 +4,8 @@ using Claw.Api.Agents;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Claw.Core;
+using System.Text.Json;
 
 namespace Claw.Tests;
 
@@ -15,7 +17,7 @@ public class ClawRuntimeTests
         var ordering = new PreviousResponseNotFoundOnceOrderingAgent();
         var config = new ConfigurationBuilder().Build();
         var workflow = new CoffeeshopWorkflow(ordering, config, NullLoggerFactory.Instance);
-        var runtime = new ClawRuntime(workflow, NullLogger<ClawRuntime>.Instance);
+        var runtime = new ClawRuntime(workflow, new FakeToolSearchClient(), NullLogger<ClawRuntime>.Instance);
 
         var result = await runtime.HandleAsync("slack:test-channel:test-user", "1 green tea");
 
@@ -30,7 +32,7 @@ public class ClawRuntimeTests
         var ordering = new EmptyResponseOrderingAgent();
         var config = new ConfigurationBuilder().Build();
         var workflow = new CoffeeshopWorkflow(ordering, config, NullLoggerFactory.Instance);
-        var runtime = new ClawRuntime(workflow, NullLogger<ClawRuntime>.Instance);
+        var runtime = new ClawRuntime(workflow, new FakeToolSearchClient(), NullLogger<ClawRuntime>.Instance);
 
         var result = await runtime.HandleAsync("slack:test-channel:test-user", "1 green tea");
 
@@ -44,7 +46,7 @@ public class ClawRuntimeTests
         var ordering = new PendingConfirmOrderingAgent();
         var config = new ConfigurationBuilder().Build();
         var workflow = new CoffeeshopWorkflow(ordering, config, NullLoggerFactory.Instance);
-        var runtime = new ClawRuntime(workflow, NullLogger<ClawRuntime>.Instance);
+        var runtime = new ClawRuntime(workflow, new FakeToolSearchClient(), NullLogger<ClawRuntime>.Instance);
 
         var first = await runtime.HandleAsync("slack:test-channel:test-user", "1 green tea");
         var second = await runtime.HandleAsync("slack:test-channel:test-user", "confirm");
@@ -54,6 +56,15 @@ public class ClawRuntimeTests
         Assert.Equal(2, ordering.AttemptCount);
         Assert.Equal("confirm", ordering.MessagesSeen[1]); // no rewriting
     }
+}
+
+internal sealed class FakeToolSearchClient : IToolSearchClient
+{
+    public Task<IReadOnlyList<ToolDefinition>> SearchToolsAsync(string query, int limit, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ToolDefinition>>([]);
+
+    public Task<object?> CallToolAsync(string name, JsonElement arguments, CancellationToken ct = default) =>
+        Task.FromResult<object?>(null);
 }
 
 internal sealed class PreviousResponseNotFoundOnceOrderingAgent : IOrderingAgent

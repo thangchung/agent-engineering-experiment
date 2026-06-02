@@ -1,4 +1,4 @@
-namespace Claw.Slack;
+namespace Claw.Channels;
 
 using SlackNet;
 using SlackNet.AspNetCore;
@@ -8,14 +8,14 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 public sealed class SlackMessageHandler(
-    FoundryAgentClient agent,
+    IAgentClient agent,
     ISlackApiClient slack,
     IConfiguration config,
     ILogger<SlackMessageHandler> logger)
     : IEventHandler<MessageEvent>, IEventHandler<AppMention>
 {
     private static readonly System.Diagnostics.ActivitySource ActivitySource =
-        new("Claw.Slack");
+        new("Claw.Channels");
 
     private static readonly Regex SlackLabeledLinkRegex = new(@"<[^>|]+\|([^>]+)>", RegexOptions.Compiled);
     private static readonly Regex SlackAngleLinkRegex = new(@"<([^>]+)>", RegexOptions.Compiled);

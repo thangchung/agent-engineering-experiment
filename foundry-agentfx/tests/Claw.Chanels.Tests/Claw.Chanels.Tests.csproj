@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Claw.Slack\Claw.Slack.csproj" />
+    <ProjectReference Include="..\..\src\Claw.Channels\Claw.Channels.csproj" />
   </ItemGroup>
 
 </Project>

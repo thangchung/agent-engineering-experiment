@@ -1,10 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using Azure.Core;
-using Claw.Slack;
+using Claw.Channels;
 using Microsoft.Extensions.Configuration;
 
-namespace Claw.Slack.Tests;
+namespace Claw.Channels.Tests;
 
 public sealed class FoundryAgentClientTests
 {

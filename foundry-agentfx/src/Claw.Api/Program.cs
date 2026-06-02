@@ -233,8 +233,6 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference(options => options.WithTitle("Claw API"));
 }
 
-app.MapWebChannel();
-
 // Map /invocations endpoint when in hosted mode (DI registered above)
 if (isHostedMode)
 {

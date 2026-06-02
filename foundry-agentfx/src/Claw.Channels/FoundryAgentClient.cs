@@ -1,11 +1,11 @@
-namespace Claw.Slack;
+namespace Claw.Channels;
 
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
 
-public sealed class FoundryAgentClient : IDisposable
+public sealed class FoundryAgentClient : IAgentClient, IDisposable
 {
     private readonly HttpClient _http;
     private readonly TokenCredential? _credential;

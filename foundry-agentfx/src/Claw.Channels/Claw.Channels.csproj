@@ -4,12 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Claw.Slack</RootNamespace>
-    <UserSecretsId>claw-slack-dev-secrets</UserSecretsId>
+    <RootNamespace>Claw.Channels</RootNamespace>
+    <UserSecretsId>claw-Channels-dev-secrets</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Claw.Slack.Tests" />
+    <InternalsVisibleTo Include="Claw.Channels.Tests" />
   </ItemGroup>
 
   <ItemGroup>

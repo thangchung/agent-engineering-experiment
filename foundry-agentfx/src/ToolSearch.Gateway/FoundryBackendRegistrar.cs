@@ -53,8 +53,9 @@ public static class FoundryBackendRegistrar
 
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
-                    http.DefaultRequestHeaders.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                    http.DefaultRequestHeaders.Authorization = null;
+                    http.DefaultRequestHeaders.Remove("api-key");
+                    http.DefaultRequestHeaders.TryAddWithoutValidation("api-key", apiKey);
                 }
                 else if (credential is not null)
                 {
@@ -184,7 +185,9 @@ public static class FoundryBackendRegistrar
         using HttpClient http = httpFactory.CreateClient("foundry-toolbox");
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+            http.DefaultRequestHeaders.Authorization = null;
+            http.DefaultRequestHeaders.Remove("api-key");
+            http.DefaultRequestHeaders.TryAddWithoutValidation("api-key", apiKey);
         }
         else if (credential is not null)
         {

@@ -7,13 +7,13 @@ Coffeeshop AI agent. **4 services** wired via Aspire:
 | **Coffeeshop.Mcp** | MCP tool server (menu, orders, customers) | ACA |
 | **ToolSearch.Gateway** | Hides all tools behind `search_tools` + `call_tool` | ACA |
 | **Claw.Api** | AI brain — MAF + Foundry provider, `/invocations` endpoint | Foundry Hosted Agent |
-| **Claw.Slack** | Thin Slack adapter — Socket Mode → Foundry → reply | ACA |
+| **Claw.Channels** | Thin Slack adapter source project — deployed service name stays `claw-slack` | ACA |
 
 ```mermaid
 graph LR
     Slack["Slack"]
     Browser["Browser"]
-    Slack -->|Socket Mode| SlackAdapter["Claw.Slack"]
+    Slack -->|Socket Mode| SlackAdapter["Claw.Channels"]
     Browser -->|/api/chat| SlackAdapter
     SlackAdapter -->|invoke| Agent["Foundry Hosted Agent<br/>claw-api"]
     Agent -->|search_tools<br/>call_tool| Gateway["ToolSearch.Gateway<br/>public FQDN"]
@@ -67,7 +67,7 @@ dotnet aspire run
 ```
 
 `claw-api` runs on :5000 with `/invocations` endpoint (gated by `Agent__HostedMode=foundry`).  
-`claw-slack` runs on :5003 and calls `claw-api` via Aspire service discovery.
+`Claw.Channels` is the source project name for the Slack adapter; the deployed ACA service name is `claw-channels` and it runs on :5003, calling `claw-api` via Aspire service discovery.
 
 Test invocations locally:
 ```bash
@@ -82,7 +82,7 @@ Use this mode when you want cloud Foundation resources (Foundry project, model d
 
 **What `SKIP_CONTAINER_APPS=true` does:**
 - Provisions infra via Bicep
-- Skips Container Apps resources for `claw-slack`, `toolsearch-gateway`, `coffeeshop-mcp`
+- Skips Container Apps resources for `claw-channels`, `toolsearch-gateway`, `coffeeshop-mcp`
 - Skips hosted-agent registration hook during deploy
 
 ```bash
@@ -153,7 +153,7 @@ azd deploy
 **How it works:**
 - `azd provision` -> creates ACR + Foundry project + ACA env
 - `azd deploy` -> builds+pushes all 4 images via ACR remote build, then:
-  - deploys `claw-slack`, `coffeeshop-mcp`, `toolsearch-gateway` as Container Apps
+  - deploys `claw-channels`, `coffeeshop-mcp`, `toolsearch-gateway` as Container Apps
   - builds+pushes `claw-api` image, registers as Foundry Hosted Agent (version), waits for `active`
 - `claw-api` runs on Foundry compute, not ACA. Env vars (`Agent__Provider`, `Services__ToolSearchGateway__Url`, etc.) injected via `agent.yaml`.
 
@@ -308,18 +308,18 @@ graph LR
 ```
 foundry-agentfx/
 ├── apphost.cs                        # Aspire AppHost (4 services)
-├── azure.yaml                        # azd service definitions (claw-slack, coffeeshop-mcp, toolsearch-gateway)
+├── azure.yaml                        # azd service definitions (claw-channels, coffeeshop-mcp, toolsearch-gateway)
 ├── infra/
 │   ├── main.bicep                    # Subscription-scoped entry; wires all modules
 │   ├── modules/
-│   │   └── container-apps.bicep     # ACA env + 3 services + RBAC for claw-slack
+│   │   └── container-apps.bicep     # ACA env + 3 services + RBAC for claw-channels
 │   ├── hooks/
 │   │   ├── postprovision.sh         # Seeds coffeeshop-kb + Foundry Toolbox
 │   │   └── register-agent.sh        # Registers claw-api as Foundry Hosted Agent
 │   └── core/ai/ai-project.bicep     # Foundry project + App Insights (auto-injects connection string)
 └── src/
     ├── Claw.Api/                     # Foundry Hosted Agent: MAF workflow + /invocations endpoint
-    ├── Claw.Slack/                   # Slack adapter: FoundryAgentClient → Foundry invocations
+    ├── Claw.Channels/                  # Slack adapter: FoundryAgentClient → Foundry invocations
     ├── Coffeeshop.Mcp/              # MCP tool server
     ├── ToolSearch.Gateway/          # Tool-search gateway
     ├── Claw.Core/                   # Shared runtime interfaces

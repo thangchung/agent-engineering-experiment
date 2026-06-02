@@ -29,6 +29,9 @@
     "foundryIqKbName": {
       "value": "${FOUNDRY_IQ_KB_NAME=coffeeshop-kb}"
     },
+    "foundryIqApiKey": {
+      "value": "${FOUNDRY_IQ_API_KEY=}"
+    },
     "toolboxEndpoint": {
       "value": "${TOOLBOX_ENDPOINT=}"
     },

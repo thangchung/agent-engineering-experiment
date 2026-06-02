@@ -283,9 +283,9 @@
     {
       "type": "Microsoft.App/containerApps",
       "apiVersion": "2024-03-01",
-      "name": "claw-slack",
+      "name": "claw-channels",
       "location": "[parameters('location')]",
-      "tags": "[union(parameters('tags'), createObject('azd-service-name', 'claw-slack'))]",
+      "tags": "[union(parameters('tags'), createObject('azd-service-name', 'claw-channels'))]",
       "identity": {
         "type": "SystemAssigned, UserAssigned",
         "userAssignedIdentities": {
@@ -310,7 +310,7 @@
         "template": {
           "containers": [
             {
-              "name": "claw-slack",
+              "name": "claw-channels",
               "image": "[parameters('seedImage')]",
               "resources": {
                 "cpu": "[json('0.25')]",
@@ -365,21 +365,21 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.CognitiveServices/accounts/projects', split(format('{0}/{1}', parameters('foundryAccountName'), last(split(parameters('foundryProjectResourceId'), '/'))), '/')[0], split(format('{0}/{1}', parameters('foundryAccountName'), last(split(parameters('foundryProjectResourceId'), '/'))), '/')[1])]",
-      "name": "[guid(parameters('foundryProjectResourceId'), 'claw-slack', 'AzureAIDeveloper')]",
+      "name": "[guid(parameters('foundryProjectResourceId'), 'claw-channels', 'AzureAIDeveloper')]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')]",
-        "principalId": "[reference(resourceId('Microsoft.App/containerApps', 'claw-slack'), '2024-03-01', 'full').identity.principalId]",
+        "principalId": "[reference(resourceId('Microsoft.App/containerApps', 'claw-channels'), '2024-03-01', 'full').identity.principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.App/containerApps', 'claw-slack')]"
+        "[resourceId('Microsoft.App/containerApps', 'claw-channels')]"
       ]
     }
   ],
   "outputs": {
-    "clawSlackUrl": {
+    "clawChannelsUrl": {
       "type": "string",
-      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', 'claw-slack'), '2024-03-01').latestRevisionFqdn)]"
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', 'claw-channels'), '2024-03-01').latestRevisionFqdn)]"
     },
     "coffeeshopMcpUrl": {
       "type": "string",

@@ -1,4 +1,4 @@
-namespace Claw.Api;
+namespace Claw.Channels;
 
 using System.Diagnostics;
 
@@ -16,8 +16,9 @@ public static class WebChannelExtensions
             return Results.File(filePath, "text/html");
         });
 
-        app.MapPost("/api/chat", async (HttpContext ctx, ClawRuntime runtime, ILogger<ClawRuntime> logger) =>
+        app.MapPost("/api/chat", async (HttpContext ctx, IAgentClient agent, ILoggerFactory loggerFactory) =>
         {
+            var logger = loggerFactory.CreateLogger("Claw.Channels.Web");
             var sessionId = GetOrCreateSessionId(ctx);
             var activity = Activity.Current;
             activity?.SetTag("channel.type", "web");
@@ -33,7 +34,7 @@ public static class WebChannelExtensions
             logger.LogInformation("[Web] Chat from session {Session}: {Preview}",
                 sessionId, message[..Math.Min(80, message.Length)]);
 
-            var reply = await runtime.HandleAsync(sessionId, message, ctx.RequestAborted);
+            var reply = await agent.InvokeAsync(message, sessionId, ctx.RequestAborted);
             activity?.SetTag("response.length", reply.Length);
             return Results.Ok(new { reply });
         });

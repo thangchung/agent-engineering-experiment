@@ -17,12 +17,12 @@ services:
                 resources:
                     cpu: "1"
                     memory: 2Gi
-    claw-slack:
+    claw-channels:
         project: .
         host: containerapp
         language: docker
         docker:
-            path: src/Claw.Slack/Dockerfile
+            path: src/Claw.Channels/Dockerfile
             context: .
             remoteBuild: true
     coffeeshop-mcp:
@@ -49,4 +49,4 @@ hooks:
         name: postprovision
         kind: sh
         shell: sh
-        run: infra/hooks/postprovision.sh
+        run: infra/hooks/post-provision.sh

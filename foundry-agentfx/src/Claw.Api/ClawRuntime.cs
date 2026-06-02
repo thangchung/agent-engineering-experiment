@@ -14,6 +14,7 @@ public sealed class ClawRuntime(
     CoffeeshopWorkflow workflow,
     IToolSearchClient toolSearch,
     ILogger<ClawRuntime> logger)
+    : IChatRuntime
 {
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();

@@ -34,6 +34,10 @@ param toolboxEndpoint string = ''
 @secure()
 param braveSearchApiKey string = ''
 
+@description('Azure AI Search admin/query API key fallback for knowledge/tools calls when MI auth is not available')
+@secure()
+param foundryIqApiKey string = ''
+
 @secure()
 param slackBotToken string = ''
 @secure()
@@ -106,8 +110,10 @@ module containerApps 'modules/container-apps.bicep' = if (toLower(skipContainerA
     foundryProjectEndpoint: aiProject.outputs.AZURE_AI_PROJECT_ENDPOINT
     foundryProjectResourceId: aiProject.outputs.projectId
     foundryAccountName: aiProject.outputs.aiServicesAccountName
+    searchServiceName: aiProject.outputs.searchServiceName
     foundryIqEndpoint: !empty(foundryIqEndpoint) ? foundryIqEndpoint : aiProject.outputs.searchEndpoint
     foundryIqKbName: foundryIqKbName
+    foundryIqApiKey: foundryIqApiKey
     toolboxEndpoint: !empty(toolboxEndpoint) ? toolboxEndpoint : '${aiProject.outputs.searchEndpoint}/knowledgebases/${foundryIqKbName}/mcp?api-version=2025-11-01-preview'
     braveSearchApiKey: braveSearchApiKey
     slackBotToken: slackBotToken
@@ -141,6 +147,6 @@ output AZURE_AI_SEARCH_KB_MCP_CONNECTION_NAME string = aiProject.outputs.kbMcpCo
 output AZURE_STORAGE_ACCOUNT_NAME string = aiProject.outputs.storageAccountName
 
 // Container Apps (empty when skipped or hosted)
-output CLAW_SLACK_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.clawSlackUrl : ''
+output CLAW_CHANNELS_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.clawChannelsUrl : ''
 output COFFEESHOP_MCP_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.coffeeshopMcpUrl : ''
 output TOOLSEARCH_GATEWAY_URL string = toLower(skipContainerApps) != 'true' ? containerApps!.outputs.toolsearchGatewayUrl : ''

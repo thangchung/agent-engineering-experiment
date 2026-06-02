@@ -7,6 +7,7 @@ using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 namespace Microsoft.Extensions.Hosting;
@@ -36,6 +37,11 @@ public static class Extensions
 
     public static TBuilder ConfigureOpenTelemetry<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
+        var configuredServiceName = builder.Configuration["OTEL_SERVICE_NAME"];
+        var serviceName = string.IsNullOrWhiteSpace(configuredServiceName)
+            ? builder.Environment.ApplicationName
+            : configuredServiceName;
+
         builder.Logging.AddOpenTelemetry(logging =>
         {
             logging.IncludeFormattedMessage = true;
@@ -43,6 +49,12 @@ public static class Extensions
         });
 
         builder.Services.AddOpenTelemetry()
+            .ConfigureResource(resource =>
+            {
+                resource
+                    .AddService(serviceName: serviceName, serviceNamespace: serviceName)
+                    .AddEnvironmentVariableDetector();
+            })
             .WithMetrics(metrics =>
             {
                 metrics
