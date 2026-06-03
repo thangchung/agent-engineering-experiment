@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Claw.Api</RootNamespace>
+    <RootNamespace>Claw.Agent</RootNamespace>
     <UserSecretsId>d971714e-6dc0-4064-90e2-b114e32907ca</UserSecretsId>
   </PropertyGroup>
 

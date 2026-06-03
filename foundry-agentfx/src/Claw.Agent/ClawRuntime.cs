@@ -1,4 +1,4 @@
-namespace Claw.Api;
+namespace Claw.Agent;
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Claw.Api.Agents;
+using Claw.Agent.Agents;
 using Claw.Core;
 using Microsoft.Agents.AI;
 

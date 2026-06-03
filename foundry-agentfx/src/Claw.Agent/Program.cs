@@ -1,8 +1,8 @@
 using Azure.AI.AgentServer.Invocations;
 using Azure.AI.Projects;
 using Azure.Identity;
-using Claw.Api;
-using Claw.Api.Agents;
+using Claw.Agent;
+using Claw.Agent.Agents;
 using Claw.Core;
 using GitHub.Copilot.SDK;
 using Microsoft.Agents.AI;
@@ -48,7 +48,7 @@ builder.Services.AddSingleton<AIAgent>(sp =>
     var mind = sp.GetRequiredService<MindLoader>();
     var config = sp.GetRequiredService<IConfiguration>();
     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-    var startupLog = loggerFactory.CreateLogger("Claw.Api.Startup");
+    var startupLog = loggerFactory.CreateLogger("Claw.Agent.Startup");
 
     var systemMessage = mind.LoadSystemMessageAsync().GetAwaiter().GetResult();
     var provider = config["Agent:Provider"] ?? "copilot";

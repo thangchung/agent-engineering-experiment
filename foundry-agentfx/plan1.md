@@ -1,6 +1,6 @@
 # Foundry Hosted Agent — Implementation Plan (v3 — Karpathy-reviewed)
 
-Goal: `ENABLE_HOSTED_FOUNDRY=false` → current behavior unchanged. Flip `true` → `claw-api` registers as Foundry Hosted Agent. Gateway + Mcp stay Container Apps. Foundry Overview dashboard shows metrics.
+Goal: `ENABLE_HOSTED_FOUNDRY=false` → current behavior unchanged. Flip `true` → `claw-agent` registers as Foundry Hosted Agent. Gateway + Mcp stay Container Apps. Foundry Overview dashboard shows metrics.
 
 ---
 
@@ -22,7 +22,7 @@ Goal: `ENABLE_HOSTED_FOUNDRY=false` → current behavior unchanged. Flip `true` 
 - [x] 2.5 Created `CoffeeshopInvocationHandler.cs` — bridges Foundry invocations protocol to `CoffeeshopWorkflow`
 
 ### Phase 3: Manual hosted agent registration (validate concept)
-- [ ] 3.1 Push image to ACR manually: `az acr build --registry <acr> --image claw-api:latest .`
+- [ ] 3.1 Push image to ACR manually: `az acr build --registry <acr> --image claw-agent:latest .`
 - [ ] 3.2 Register agent via REST (one curl command) — confirm `active` status
 - [ ] 3.3 Invoke agent endpoint — confirm response
 - [ ] 3.4 Check Foundry Portal Overview — metrics appear
@@ -105,7 +105,7 @@ x-ms-code-zip-sha256: <sha256>
     "cpu": "1",
     "memory": "2Gi",
     "container_configuration": {
-      "image": "<acr>/claw-api:latest",
+      "image": "<acr>/claw-agent:latest",
       "acr_credential": "managed_identity"
     },
     "environment_variables": {
@@ -124,7 +124,7 @@ x-ms-code-zip-sha256: <sha256>
 
 > ⚠️ `code_configuration` section (below) shown for reference only — NOT used in this plan:
 > ```json
-> "code_configuration": { "runtime": "dotnet_10", "entry_point": ["dotnet", "Claw.Api.dll"], "dependency_resolution": "bundled" }
+> "code_configuration": { "runtime": "dotnet_10", "entry_point": ["dotnet", "Claw.Agent.dll"], "dependency_resolution": "bundled" }
 > ```
 
 **Invoke**: `POST {projectEndpoint}/agents/{name}/endpoint/protocols/invocations?api-version=v1`
@@ -133,7 +133,7 @@ x-ms-code-zip-sha256: <sha256>
 
 ## 6 file changes
 
-### 1. `src/Claw.Api/Claw.Api.csproj`
+### 1. `src/Claw.Agent/Claw.Agent.csproj`
 
 Add package + bump existing:
 ```xml
@@ -143,7 +143,7 @@ Add package + bump existing:
 <PackageReference Include="Microsoft.Agents.AI.Foundry.Hosting"  Version="1.7.0-preview.260526.1" />
 ```
 
-### 2. `src/Claw.Api/Program.cs` (Gap #4 FIXED — single approach)
+### 2. `src/Claw.Agent/Program.cs` (Gap #4 FIXED — single approach)
 
 **Single approach**: Gate BOTH DI + endpoint together. `MapFoundryInvocationsEndpoint()` requires `AddFoundryInvocations()` services to be registered — calling endpoint without DI = runtime exception.
 
@@ -175,7 +175,7 @@ if (isHostedMode)
 
 Add param:
 ```bicep
-@description('Deploy claw-api as Foundry Hosted Agent. false = Container App (default).')
+@description('Deploy claw-agent as Foundry Hosted Agent. false = Container App (default).')
 param enableHostedFoundry bool = false
 ```
 
@@ -213,7 +213,7 @@ Update outputs (Gap #6 FIXED — use conditional `?` for safe property access):
 ```bicep
 output CLAW_API_URL string = skipContainerApps != 'true'
   ? (enableHostedFoundry
-      ? '${aiProject.outputs.AZURE_AI_PROJECT_ENDPOINT}/agents/claw-api/endpoint/protocols/invocations?api-version=v1'
+      ? '${aiProject.outputs.AZURE_AI_PROJECT_ENDPOINT}/agents/claw-agent/endpoint/protocols/invocations?api-version=v1'
       : containerApps!.outputs.clawApiUrl)
   : ''
 ```
@@ -250,7 +250,7 @@ param containerRegistryLoginServer string
 param foundryModel string = 'gpt-4o-mini'
 param appInsightsConnectionString string
 param gatewayUrl string
-param agentName string = 'claw-api'
+param agentName string = 'claw-agent'
 param scriptIdentityId string          // pre-existing UserAssigned MI resource ID
 param scriptIdentityPrincipalId string // for RBAC if needed
 
@@ -283,7 +283,7 @@ resource registerAgent 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
           "cpu": "1",
           "memory": "2Gi",
           "container_configuration": {
-            "image": "${ACR}/claw-api:latest",
+            "image": "${ACR}/claw-agent:latest",
             "acr_credential": "managed_identity"
           },
           "environment_variables": {
@@ -361,7 +361,7 @@ output hostedAgentUrl string = '${foundryProjectEndpoint}/agents/${agentName}/en
 
 The deploymentScript identity needs:
 1. **Foundry Project Manager** role on the AI project (to create agents + assign agent identity roles)
-2. **AcrPull** on the Container Registry (so Foundry can pull claw-api image)
+2. **AcrPull** on the Container Registry (so Foundry can pull claw-agent image)
 
 In `main.bicep`, either:
 - Reuse existing `managedIdentity` module (if it has Foundry Project Manager)
@@ -403,7 +403,7 @@ When running as Foundry Hosted Agent, Toolbox MCP endpoint format changes:
 
 ```bash
 # 1. Build + push image
-az acr build --registry <your-acr> --image claw-api:latest --file src/Claw.Api/Dockerfile .
+az acr build --registry <your-acr> --image claw-agent:latest --file src/Claw.Agent/Dockerfile .
 
 # 2. Get token
 TOKEN=$(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)
@@ -419,7 +419,7 @@ cat > /tmp/metadata.json << 'EOF'
     "cpu": "1",
     "memory": "2Gi",
     "container_configuration": {
-      "image": "<acr>.azurecr.io/claw-api:latest",
+      "image": "<acr>.azurecr.io/claw-agent:latest",
       "acr_credential": "managed_identity"
     },
     "environment_variables": {
@@ -436,16 +436,16 @@ curl -X POST "$ENDPOINT/agents?api-version=2025-11-15-preview" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/json" \
   -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
-  -H "x-ms-agent-name: claw-api" \
+  -H "x-ms-agent-name: claw-agent" \
   -F "metadata=@/tmp/metadata.json;type=application/json"
 
 # 5. Poll
 curl -s -H "Authorization: Bearer $TOKEN" \
   -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
-  "$ENDPOINT/agents/claw-api/versions/1?api-version=2025-11-15-preview" | jq .status
+  "$ENDPOINT/agents/claw-agent/versions/1?api-version=2025-11-15-preview" | jq .status
 
 # 6. Invoke
-curl -X POST "$ENDPOINT/agents/claw-api/endpoint/protocols/invocations?api-version=v1" \
+curl -X POST "$ENDPOINT/agents/claw-agent/endpoint/protocols/invocations?api-version=v1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
@@ -470,10 +470,10 @@ curl -X POST "$ENDPOINT/agents/claw-api/endpoint/protocols/invocations?api-versi
 
 ## Dockerfile verified (Gap #9 FIXED)
 
-Existing `src/Claw.Api/Dockerfile`:
+Existing `src/Claw.Agent/Dockerfile`:
 - ✅ Target: `net10.0`
 - ✅ Exposes port 8080
-- ✅ Entry: `dotnet Claw.Api.dll`
+- ✅ Entry: `dotnet Claw.Agent.dll`
 - ✅ Multi-stage build with publish output
 - ⚠️ Note: For container_configuration deploy, Foundry pulls from ACR directly. Dockerfile is fine as-is.
 
@@ -504,11 +504,11 @@ azd provision  # re-register agent (content-addressable versioning — new versi
 # Revert to Container App mode:
 azd env set ENABLE_HOSTED_FOUNDRY false
 azd up
-# Result: claw-api Container App recreated, hosted agent left orphaned (manual delete optional)
+# Result: claw-agent Container App recreated, hosted agent left orphaned (manual delete optional)
 
 # Delete orphaned hosted agent:
 TOKEN=$(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)
-curl -X DELETE "${ENDPOINT}/agents/claw-api?api-version=2025-11-15-preview" \
+curl -X DELETE "${ENDPOINT}/agents/claw-agent?api-version=2025-11-15-preview" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview"
 ```
@@ -517,9 +517,9 @@ curl -X DELETE "${ENDPOINT}/agents/claw-api?api-version=2025-11-15-preview" \
 
 ## Verification steps
 
-1. `curl -H "Authorization: Bearer $TOKEN" -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" "${ENDPOINT}/agents/claw-api/versions/1?api-version=2025-11-15-preview"` → status: `active`
+1. `curl -H "Authorization: Bearer $TOKEN" -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" "${ENDPOINT}/agents/claw-agent/versions/1?api-version=2025-11-15-preview"` → status: `active`
 2. Foundry Portal → Overview → Running agents = 1
-3. Invoke: `curl -X POST "${ENDPOINT}/agents/claw-api/endpoint/protocols/invocations?api-version=v1" -H "Authorization: Bearer $TOKEN" -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" -d '{"input":"I want a latte"}'` → order response
+3. Invoke: `curl -X POST "${ENDPOINT}/agents/claw-agent/endpoint/protocols/invocations?api-version=v1" -H "Authorization: Bearer $TOKEN" -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" -d '{"input":"I want a latte"}'` → order response
 4. Foundry Overview → Token usage + Agent run volume populate
 5. Aspire local dev (`azd env set ENABLE_HOSTED_FOUNDRY false && dotnet run`) still works
 
@@ -547,7 +547,7 @@ curl -X DELETE "${ENDPOINT}/agents/claw-api?api-version=2025-11-15-preview" \
 | 6 | Bicep conditional output | Use computed string, avoid conditional module output refs |
 | 7 | File count mismatch | Fixed: 6 throughout |
 | 8 | Version pin strategy | Pin exact preview, wildcard at GA |
-| 9 | Dockerfile unverified | Verified: net10.0, port 8080, `dotnet Claw.Api.dll` |
+| 9 | Dockerfile unverified | Verified: net10.0, port 8080, `dotnet Claw.Agent.dll` |
 | 10 | Toolbox endpoint mismatch | `Toolbox__McpEndpoint` in container_configuration env vars |
 | 11 | Deploy ordering | `azd up` first time; manual Phase 3 validates before automation |
 | 12 | No rollback | Rollback commands added |

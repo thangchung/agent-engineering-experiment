@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Claw.Api/Claw.Api.csproj" />
+    <Project Path="src/Claw.Agent/Claw.Agent.csproj" />
     <Project Path="src/Claw.Core/Claw.Core.csproj" />
     <Project Path="src/Claw.Channels/Claw.Channels.csproj" />
     <Project Path="src/Coffeeshop.Mcp/Coffeeshop.Mcp.csproj" />

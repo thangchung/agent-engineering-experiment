@@ -82,8 +82,8 @@ jobs:
           echo "foundry_endpoint=$FOUNDRY" >> "$GITHUB_OUTPUT"
           echo "gateway_url=$GATEWAY" >> "$GITHUB_OUTPUT"
 
-  build-claw-api-image:
-    # Step 2: build claw-api image BEFORE deploy so postdeploy hook can find it
+  build-claw-agent-image:
+    # Step 2: build claw-agent image BEFORE deploy so postdeploy hook can find it
     needs: provision
     runs-on: ubuntu-latest
     env:
@@ -98,20 +98,20 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push claw-api image to ACR
+      - name: Build and push claw-agent image to ACR
         run: |
           TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}
-          REPO="foundry-agentfx/claw-api-${AZURE_ENV_NAME}"
+          REPO="foundry-agentfx/claw-agent-${AZURE_ENV_NAME}"
           az acr build \
             --registry "$AZURE_CONTAINER_REGISTRY_NAME" \
             --image "${REPO}:${TAG}" \
             --image "${REPO}:latest" \
-            --file src/Claw.Api/Dockerfile \
+            --file src/Claw.Agent/Dockerfile \
             .
 
   deploy:
-    # Step 3: deploy all ACA services + postdeploy hook registers claw-api (image now exists)
-    needs: [provision, build-claw-api-image]
+    # Step 3: deploy all ACA services + postdeploy hook registers claw-agent (image now exists)
+    needs: [provision, build-claw-agent-image]
     runs-on: ubuntu-latest
     env:
       AZURE_CONTAINER_REGISTRY_NAME: ${{ needs.provision.outputs.acr_name }}
@@ -138,7 +138,7 @@ jobs:
           azd env set AZURE_LOCATION "$AZURE_LOCATION"
 
       # Deploys claw-slack, coffeeshop-mcp, toolsearch-gateway
-      # postdeploy hook (register-agent.sh) runs here — claw-api image already in ACR
+      # postdeploy hook (register-agent.sh) runs here — claw-agent image already in ACR
       - name: Deploy services
         run: azd deploy --no-prompt
 
@@ -148,7 +148,7 @@ jobs:
           for i in $(seq 1 20); do
             STATUS=$(az rest \
               --method GET \
-              --url "${AZURE_AI_PROJECT_ENDPOINT}/agents/claw-api?api-version=2025-11-15-preview" \
+              --url "${AZURE_AI_PROJECT_ENDPOINT}/agents/claw-agent?api-version=2025-11-15-preview" \
               --resource "https://ai.azure.com" \
               --query "status" -o tsv 2>/dev/null || echo "unknown")
             echo "Attempt $i: status=$STATUS"
@@ -166,7 +166,7 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Foundry-Features: HostedAgents=V1Preview" \
             -d '{"input":"list menu"}' \
-            "${AZURE_AI_PROJECT_ENDPOINT}/agents/claw-api/endpoint/protocols/invocations?api-version=v1" \
+            "${AZURE_AI_PROJECT_ENDPOINT}/agents/claw-agent/endpoint/protocols/invocations?api-version=v1" \
             --max-time 60 || echo "TIMEOUT_OR_ERROR")
           echo "Response: $RESPONSE"
           if echo "$RESPONSE" | grep -qi "TIMEOUT_OR_ERROR"; then

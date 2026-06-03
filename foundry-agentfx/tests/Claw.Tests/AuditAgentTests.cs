@@ -1,4 +1,4 @@
-using Claw.Api.Agents;
+using Claw.Agent.Agents;
 using Coffeeshop.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;

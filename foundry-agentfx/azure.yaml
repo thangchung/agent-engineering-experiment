@@ -4,12 +4,12 @@ name: foundry-agentfx
 metadata:
     template: foundry-agentfx@0.1.0
 services:
-    claw-api:
+    claw-agent:
         project: .
         host: azure.ai.agent
         language: docker
         docker:
-            path: src/Claw.Api/Dockerfile
+            path: src/Claw.Agent/Dockerfile
             context: .
             remoteBuild: true
         config:

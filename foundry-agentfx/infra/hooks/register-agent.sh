@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Registers claw-api as a Foundry Hosted Agent after azd deploy.
+# Registers claw-agent as a Foundry Hosted Agent after azd deploy.
 # Runs locally using the caller's own Azure credentials — no managed identity needed.
 
 set -e
@@ -12,7 +12,7 @@ if [ "${SKIP_CONTAINER_APPS:-false}" = "true" ]; then
   exit 0
 fi
 
-AGENT_NAME="claw-api"
+AGENT_NAME="claw-agent"
 ACR_NAME="${AZURE_CONTAINER_REGISTRY_NAME}"
 ACR_ENDPOINT="${AZURE_CONTAINER_REGISTRY_ENDPOINT}"
 AZD_ENV="${AZURE_ENV_NAME}"
@@ -29,7 +29,7 @@ IMAGE_TAG=$(az acr repository show-tags \
 
 if [ -z "$IMAGE_TAG" ]; then
   echo "ERROR: No image found in ACR repo $REPO."
-  echo "Run 'az acr build -t ${REPO}:latest -r ${ACR_NAME} . --file src/Claw.Api/Dockerfile' first."
+  echo "Run 'az acr build -t ${REPO}:latest -r ${ACR_NAME} . --file src/Claw.Agent/Dockerfile' first."
   exit 1
 fi
 

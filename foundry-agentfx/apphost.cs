@@ -1,7 +1,7 @@
 #:sdk Aspire.AppHost.Sdk@13.3.5+70b33bcb5f64c75e3ab6f57616545f35bd43dc81
 #:project src/Coffeeshop.Mcp/Coffeeshop.Mcp.csproj
 #:project src/ToolSearch.Gateway/ToolSearch.Gateway.csproj
-#:project src/Claw.Api/Claw.Api.csproj
+#:project src/Claw.Agent/Claw.Agent.csproj
 #:project src/Claw.Channels/Claw.Channels.csproj
 
 var builder = DistributedApplication.CreateBuilder(args);
@@ -47,7 +47,7 @@ var gateway = builder.AddProject<Projects.ToolSearch_Gateway>("toolsearch-gatewa
     .WithEnvironment("APPLICATIONINSIGHTS_CONNECTION_STRING", appInsightsConn)
     .WaitFor(coffeeshop);
 
-var clawApi = builder.AddProject<Projects.Claw_Api>("claw-api")
+var clawApi = builder.AddProject<Projects.Claw_Api>("claw-agent")
     .WithHttpEndpoint(port: 5000, name: "http")
     // Gateway URL — resolved automatically from Aspire service discovery
     .WithEnvironment("Services__ToolSearchGateway__Url", gateway.GetEndpoint("http"))
@@ -66,10 +66,10 @@ var clawApi = builder.AddProject<Projects.Claw_Api>("claw-api")
 
 builder.AddProject<Projects.Claw_Channels>("claw-channels")
     .WithHttpEndpoint(port: 5003, name: "http")
-    // Forward Slack events to claw-api /invocations — resolved by Aspire
+    // Forward Slack events to claw-agent /invocations — resolved by Aspire
     .WithEnvironment("Agent__Provider",         agentProvider)
     .WithEnvironment("Agent__BaseUrl",          clawApi.GetEndpoint("http"))
-    // Override cloud path from appsettings.Production.json — claw-api locally serves /invocations
+    // Override cloud path from appsettings.Production.json — claw-agent locally serves /invocations
     .WithEnvironment("Agent__InvocationsPath",  "/invocations")
     // Slack tokens
     .WithEnvironment("Slack__BotToken",        slackBotToken)

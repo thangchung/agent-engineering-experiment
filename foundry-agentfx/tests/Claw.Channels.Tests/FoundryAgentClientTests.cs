@@ -136,7 +136,7 @@ public sealed class FoundryAgentClientTests
 
         var config = BuildConfig(new()
         {
-            ["Agent:InvocationsPath"] = "agents/claw-api/endpoint/protocols/invocations?api-version=v1",
+            ["Agent:InvocationsPath"] = "agents/claw-agent/endpoint/protocols/invocations?api-version=v1",
             ["Agent:TokenResource"] = "https://ai.azure.com"
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/api/projects/project/") };
@@ -146,8 +146,8 @@ public sealed class FoundryAgentClientTests
 
         Assert.Equal("menu", result);
         Assert.Equal(2, requests.Count);
-        Assert.Equal("/api/projects/project/agents/claw-api/endpoint/sessions?api-version=v1", requests[0].RequestUri!.PathAndQuery);
-        Assert.Equal("/api/projects/project/agents/claw-api/endpoint/protocols/invocations?api-version=v1&agent_session_id=foundry-session-1", requests[1].RequestUri!.PathAndQuery);
+        Assert.Equal("/api/projects/project/agents/claw-agent/endpoint/sessions?api-version=v1", requests[0].RequestUri!.PathAndQuery);
+        Assert.Equal("/api/projects/project/agents/claw-agent/endpoint/protocols/invocations?api-version=v1&agent_session_id=foundry-session-1", requests[1].RequestUri!.PathAndQuery);
         Assert.True(requests.All(r => r.Headers.Contains("Foundry-Features")));
     }
 }

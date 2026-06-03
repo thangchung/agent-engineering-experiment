@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Claw.Core\Claw.Core.csproj" />
-    <ProjectReference Include="..\..\src\Claw.Api\Claw.Api.csproj" />
+    <ProjectReference Include="..\..\src\Claw.Agent\Claw.Agent.csproj" />
     <ProjectReference Include="..\..\src\Coffeeshop.Models\Coffeeshop.Models.csproj" />
   </ItemGroup>
 

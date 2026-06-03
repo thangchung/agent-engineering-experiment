@@ -1,12 +1,12 @@
-namespace Claw.Api;
+namespace Claw.Agent;
 
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 public static class ClawTelemetry
 {
-    public const string ActivitySourceName = "Claw.Api";
-    public const string MeterName = "Claw.Api";
+    public const string ActivitySourceName = "Claw.Agent";
+    public const string MeterName = "Claw.Agent";
 
     public static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 

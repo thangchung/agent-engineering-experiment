@@ -1,4 +1,4 @@
-namespace Claw.Api.Agents;
+namespace Claw.Agent.Agents;
 
 using System.Diagnostics;
 using System.Globalization;

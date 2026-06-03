@@ -1,4 +1,4 @@
-namespace Claw.Api;
+namespace Claw.Agent;
 
 public sealed class MindLoader(IConfiguration config)
 {

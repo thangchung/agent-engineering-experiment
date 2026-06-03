@@ -934,7 +934,7 @@ For rewrite: default to Foundry, optionally fall back to Copilot.
 graph TB
     subgraph "foundry-agentfx (monorepo)"
         subgraph "src/Claw"
-            ClawAPI[Claw.Api<br/>ASP.NET Core host]
+            ClawAPI[Claw.Agent<br/>ASP.NET Core host]
             ClawCore[Claw.Core<br/>Runtime, agents, tools]
             ClawChannels[Claw.Channels<br/>Slack, Web, etc.]
         end
@@ -989,7 +989,7 @@ graph TB
 ```
 foundry-agentfx/
 ├── src/
-│   ├── Claw.Api/                 # ASP.NET host (channels, endpoints)
+│   ├── Claw.Agent/                 # ASP.NET host (channels, endpoints)
 │   ├── Claw.Core/                # Runtime, agents, tools
 │   ├── Claw.Channels/            # Slack, Web channel adapters
 │   ├── Coffeeshop.Mcp/           # HTTP MCP server
@@ -1007,10 +1007,10 @@ foundry-agentfx/
 └── foundry-agentfx.slnx
 ```
 
-### 7.2 Claw.Api DI Registration (Program.cs)
+### 7.2 Claw.Agent DI Registration (Program.cs)
 
 ```pseudo
-// Program.cs - Claw.Api
+// Program.cs - Claw.Agent
 builder = WebApplication.CreateBuilder()
 
 // 1. Aspire service defaults (OTel, health checks)
@@ -1263,7 +1263,7 @@ public interface IOrderService
 
 ### 9.4 Configuration Schema
 
-**appsettings.json** (Claw.Api):
+**appsettings.json** (Claw.Agent):
 
 ```json
 {
@@ -1303,8 +1303,8 @@ var gateway = builder.AddProject<Projects.ToolSearch_Gateway>("toolsearch-gatewa
     .WithHttpEndpoint(port: 5002, name: "mcp")
     .WithReference(coffeeshop);
 
-// 3. Claw.Api depends on Gateway
-builder.AddProject<Projects.Claw_Api>("claw-api")
+// 3. Claw.Agent depends on Gateway
+builder.AddProject<Projects.Claw_Api>("claw-agent")
     .WithHttpEndpoint(port: 5000)
     .WithReference(gateway)
     .WithEnvironment("ToolSearch__GatewayUrl", gateway.GetEndpoint("mcp"));
@@ -1373,7 +1373,7 @@ Key risks:
 
 **Success criteria:**
 
-1. `dotnet run --project Claw.Api` → agent responds to Slack/Web
+1. `dotnet run --project Claw.Agent` → agent responds to Slack/Web
 2. `dotnet run --project Coffeeshop.Mcp` → MCP server on :8080
 3. OrderingAgent can:
    - List menu via MCP
@@ -1410,7 +1410,7 @@ Key risks:
 |-------|-------|--------|
 | 1 | Monorepo structure, build passes | `dotnet build` |
 | 2 | Coffeeshop.Mcp standalone | `curl POST /mcp` |
-| 3 | Claw.Api with Foundry provider | `POST /api/chat` |
+| 3 | Claw.Agent with Foundry provider | `POST /api/chat` |
 | 4 | OrderingAgent + MCP integration | Order via Slack |
 | 5 | AuditAgent + workflow | Check `orders/` folder |
 | 6 | Foundry IQ integration | RAG search works |
@@ -1440,7 +1440,7 @@ graph TB
     subgraph "Azure"
         subgraph "Resource Group: rg-foundry-agentfx"
             subgraph "Container Apps Environment"
-                ClawApp[Container App:<br/>claw-api]
+                ClawApp[Container App:<br/>claw-agent]
                 CoffeeApp[Container App:<br/>coffeeshop-mcp]
             end
             
@@ -1500,7 +1500,7 @@ foundry-agentfx/
 │       ├── create-search-indexes.py
 │       └── seed-knowledge-base.py
 ├── src/
-│   ├── Claw.Api/
+│   ├── Claw.Agent/
 │   │   └── Dockerfile
 │   └── Coffeeshop.Mcp/
 │       └── Dockerfile
@@ -1521,12 +1521,12 @@ infra:
   path: infra
 
 services:
-  claw-api:
-    project: src/Claw.Api
+  claw-agent:
+    project: src/Claw.Agent
     language: dotnet
     host: containerapp
     docker:
-      path: src/Claw.Api/Dockerfile
+      path: src/Claw.Agent/Dockerfile
       context: .
 
   coffeeshop-mcp:
@@ -1741,9 +1741,9 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 
 // Claw API Container App
 resource clawApi 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'claw-api'
+  name: 'claw-agent'
   location: location
-  tags: union(tags, { 'azd-service-name': 'claw-api' })
+  tags: union(tags, { 'azd-service-name': 'claw-agent' })
   identity: {
     type: 'SystemAssigned'
   }
@@ -1777,8 +1777,8 @@ resource clawApi 'Microsoft.App/containerApps@2024-03-01' = {
     template: {
       containers: [
         {
-          name: 'claw-api'
-          image: '${containerRegistryLoginServer}/claw-api:latest'
+          name: 'claw-agent'
+          image: '${containerRegistryLoginServer}/claw-agent:latest'
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -1943,7 +1943,7 @@ azd deploy
 
 // Verify deployment
 azd monitor --live   // Stream logs
-curl https://claw-api.xxx.azurecontainerapps.io/healthz
+curl https://claw-agent.xxx.azurecontainerapps.io/healthz
 
 // Invoke agent
 azd ai agent invoke --new-session "Order a latte for alice@example.com"
@@ -2014,10 +2014,10 @@ jobs:
 
 ```bash
 # Check container health
-az containerapp show -n claw-api -g rg-dev --query "properties.latestRevisionFqdn"
+az containerapp show -n claw-agent -g rg-dev --query "properties.latestRevisionFqdn"
 
 # Test health endpoint
-curl https://<claw-api-url>/healthz
+curl https://<claw-agent-url>/healthz
 
 # Test MCP endpoint
 curl -X POST https://<coffeeshop-mcp-url>/mcp \

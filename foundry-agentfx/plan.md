@@ -45,7 +45,7 @@
 ### Phase 4: Claw Agent
 - [x] Create `Claw.Core/` (runtime, agents, IToolSearchClient)
 - [x] Create `Claw.Channels/` (Slack, Web adapters)
-- [x] Create `Claw.Api/` ASP.NET host
+- [x] Create `Claw.Agent/` ASP.NET host
 - [x] Port `ClawRuntime` from DotNetClaw
 - [x] Replace Copilot SDK → Foundry SDK (`AIProjectClient`)
 - [x] Implement `ToolSearchClient` (calls gateway MCP)
@@ -79,7 +79,7 @@
 graph TB
     subgraph "foundry-agentfx"
         subgraph "Claw"
-            API[Claw.Api]
+            API[Claw.Agent]
             Core[Claw.Core]
             Chan[Claw.Channels]
         end

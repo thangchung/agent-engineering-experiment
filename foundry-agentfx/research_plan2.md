@@ -5,7 +5,7 @@
 3 services:
 - `coffeeshop-mcp` → ACA (internal)
 - `toolsearch-gateway` → ACA (internal)
-- `claw-api` → ACA + Foundry Hosted Agent registration (external)
+- `claw-agent` → ACA + Foundry Hosted Agent registration (external)
 
 Current state: single `azure-deploy.yml` does `azd up --no-prompt` (provision + deploy in one shot). Works but primitive.
 
@@ -269,7 +269,7 @@ Problems:
 │  3. azd provision (idempotent — no-op when unchanged)    │
 │  4. azd deploy (ACR build + push + ACA update, all 3)   │
 │  5. postdeploy hook → register-agent.sh (auto)           │
-│  6. Smoke test (curl /health on claw-api ACA)            │
+│  6. Smoke test (curl /health on claw-agent ACA)            │
 └─────────────────────────────────────────────────────────┘
          │ (approval gate — future)
          ▼
@@ -401,10 +401,10 @@ jobs:
       - name: Smoke test
         run: |
           eval "$(azd env get-values | sed 's/^/export /')"
-          CLAW_FQDN=$(az containerapp show -n claw-api -g "rg-${AZURE_ENV_NAME}" \
+          CLAW_FQDN=$(az containerapp show -n claw-agent -g "rg-${AZURE_ENV_NAME}" \
             --query 'properties.configuration.ingress.fqdn' -o tsv)
           curl -sf "https://${CLAW_FQDN}/health" --max-time 30 || exit 1
-          echo "✓ claw-api healthy"
+          echo "✓ claw-agent healthy"
 ```
 
 ### Phase 2 (future): Multi-env + promotion

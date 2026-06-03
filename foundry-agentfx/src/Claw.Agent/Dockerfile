@@ -4,18 +4,18 @@ EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY ["src/Claw.Api/Claw.Api.csproj", "src/Claw.Api/"]
+COPY ["src/Claw.Agent/Claw.Agent.csproj", "src/Claw.Agent/"]
 COPY ["src/Claw.Core/Claw.Core.csproj", "src/Claw.Core/"]
 COPY ["src/ServiceDefaults/ServiceDefaults.csproj", "src/ServiceDefaults/"]
-RUN dotnet restore "src/Claw.Api/Claw.Api.csproj"
+RUN dotnet restore "src/Claw.Agent/Claw.Agent.csproj"
 COPY . .
-WORKDIR "/src/src/Claw.Api"
-RUN dotnet build "Claw.Api.csproj" -c Release -o /app/build
+WORKDIR "/src/src/Claw.Agent"
+RUN dotnet build "Claw.Agent.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "Claw.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "Claw.Agent.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Claw.Api.dll"]
+ENTRYPOINT ["dotnet", "Claw.Agent.dll"]

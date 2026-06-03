@@ -3,7 +3,7 @@ using Microsoft.Agents.AI;
 using System.Text.Json;
 using System.Text;
 
-namespace Claw.Api.Agents;
+namespace Claw.Agent.Agents;
 
 /// <summary>
 /// Handles Foundry Hosted Agent invocation requests.

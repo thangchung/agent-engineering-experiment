@@ -214,7 +214,7 @@ resource clawChannels 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
             { name: 'Agent__Provider', value: 'foundry' }
             { name: 'Agent__BaseUrl', value: foundryProjectEndpoint }
-            { name: 'Agent__InvocationsPath', value: 'agents/claw-api/endpoint/protocols/invocations?api-version=v1' }
+            { name: 'Agent__InvocationsPath', value: 'agents/claw-agent/endpoint/protocols/invocations?api-version=v1' }
             { name: 'Agent__TokenResource', value: 'https://ai.azure.com' }
             { name: 'Slack__BotToken', value: slackBotToken }
             { name: 'Slack__AppToken', value: slackAppToken }

@@ -1,5 +1,5 @@
 kind: hosted
-name: claw-api
+name: claw-agent
 protocols:
     - protocol: invocations
       version: 1.0.0
@@ -10,7 +10,7 @@ environment:
     Agent__HostedMode: foundry
     Foundry__Endpoint: ${AZURE_AI_PROJECT_ENDPOINT}
     AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
-    OTEL_SERVICE_NAME: claw-api
-    OTEL_RESOURCE_ATTRIBUTES: service.namespace=claw-api,service.name=claw-api
+    OTEL_SERVICE_NAME: claw-agent
+    OTEL_RESOURCE_ATTRIBUTES: service.namespace=claw-agent,service.name=claw-agent
     OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "true"
     Services__ToolSearchGateway__Url: ${TOOLSEARCH_GATEWAY_URL}

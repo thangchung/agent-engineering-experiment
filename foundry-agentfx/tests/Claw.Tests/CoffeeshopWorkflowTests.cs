@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Claw.Api.Agents;
+using Claw.Agent.Agents;
 using Coffeeshop.Models;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;

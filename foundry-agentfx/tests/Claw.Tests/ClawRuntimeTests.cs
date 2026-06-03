@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using Claw.Api;
-using Claw.Api.Agents;
+using Claw.Agent;
+using Claw.Agent.Agents;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
