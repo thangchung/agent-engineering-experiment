@@ -9,10 +9,10 @@
       "value": "${AZURE_LOCATION=eastus}"
     },
     "modelDeploymentName": {
-      "value": "${MODEL_DEPLOYMENT_NAME=gpt-4o-mini}"
+      "value": "${MODEL_DEPLOYMENT_NAME=gpt-5.4-mini}"
     },
     "modelName": {
-      "value": "${AZURE_OPENAI_MODEL_NAME=gpt-4o-mini}"
+      "value": "${AZURE_OPENAI_MODEL_NAME=gpt-5.4-mini}"
     },
     "modelVersion": {
       "value": "${AZURE_OPENAI_MODEL_VERSION=2024-07-18}"

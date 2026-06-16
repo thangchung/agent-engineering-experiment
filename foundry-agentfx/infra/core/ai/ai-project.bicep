@@ -5,8 +5,8 @@ param location string
 
 param aiFoundryProjectName string
 param modelDeploymentName string = 'gpt-5.4-mini'
-@description('Actual Azure OpenAI model name (e.g. gpt-4o-mini, gpt-4.1-mini)')
-param modelName string = 'gpt-4o-mini'
+@description('Actual Azure OpenAI model name (e.g. gpt-5.4-mini, gpt-4.1-mini)')
+param modelName string = 'gpt-5.4-mini'
 param modelVersion string = '2024-07-18'
 
 @description('Id of the user or app to assign application roles')

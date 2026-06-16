@@ -18,7 +18,7 @@ ACR_ENDPOINT="${AZURE_CONTAINER_REGISTRY_ENDPOINT}"
 AZD_ENV="${AZURE_ENV_NAME}"
 FOUNDRY_ENDPOINT="${AZURE_AI_PROJECT_ENDPOINT}"
 GATEWAY_URL="${TOOLSEARCH_GATEWAY_URL:-}"
-MODEL_DEPLOYMENT="${AZURE_AI_MODEL_DEPLOYMENT_NAME:-gpt-4o-mini}"
+MODEL_DEPLOYMENT="${AZURE_AI_MODEL_DEPLOYMENT_NAME:-gpt-5.4-mini}"
 
 # Get latest image tag pushed by azd deploy
 REPO="foundry-agentfx/${AGENT_NAME}-${AZD_ENV}"
@@ -54,7 +54,7 @@ d = {
             'ASPNETCORE_ENVIRONMENT':                              'Production',
             'Agent__Provider':                                     'foundry',
             'Agent__HostedMode':                                   'foundry',
-            'AZURE_AI_MODEL_DEPLOYMENT_NAME':                      os.environ.get('MODEL_DEPLOYMENT', 'gpt-4o-mini'),
+            'AZURE_AI_MODEL_DEPLOYMENT_NAME':                      os.environ.get('MODEL_DEPLOYMENT', 'gpt-5.4-mini'),
             'OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT':  'true',
             'Services__ToolSearchGateway__Url':                    os.environ.get('GATEWAY_URL', ''),
         }

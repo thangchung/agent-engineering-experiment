@@ -27,14 +27,21 @@ if [ -f "infra/create-search-indexes.py" ]; then
     exit 0
   fi
 
-  # Install deps (no azure-search-documents needed — script uses REST directly)
-  $PYTHON -m pip install --quiet azure-identity httpx python-dotenv
+  VENV_DIR="infra/.venv"
+  if [ ! -x "$VENV_DIR/bin/python" ]; then
+    $PYTHON -m venv "$VENV_DIR"
+  fi
+  VENV_PYTHON="$VENV_DIR/bin/python"
+
+  # Install deps in a repo-local venv (no azure-search-documents needed — script uses REST directly)
+  "$VENV_PYTHON" -m pip install --quiet --upgrade pip
+  "$VENV_PYTHON" -m pip install --quiet azure-identity httpx python-dotenv
 
   echo "Creating search indexes..."
-  $PYTHON infra/create-search-indexes.py || echo "Warning: search index creation failed (non-fatal)"
+  "$VENV_PYTHON" infra/create-search-indexes.py || echo "Warning: search index creation failed (non-fatal)"
 
   echo "Creating Foundry Toolbox..."
-  $PYTHON infra/create-toolbox.py || echo "Warning: toolbox creation failed (non-fatal — Toolbox API is preview)"
+  "$VENV_PYTHON" infra/create-toolbox.py || echo "Warning: toolbox creation failed (non-fatal — Toolbox API is preview)"
 else
   echo "No post-provision scripts found — skipping."
 fi

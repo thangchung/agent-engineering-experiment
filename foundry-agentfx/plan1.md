@@ -111,7 +111,7 @@ x-ms-code-zip-sha256: <sha256>
     "environment_variables": {
       "ASPNETCORE_HTTP_PORTS": "8080",
       "Agent__HostedMode": "foundry",
-      "Foundry__Model": "gpt-4o-mini",
+      "Foundry__Model": "gpt-5.4-mini",
       "Foundry__Endpoint": "<project-endpoint>",
       "Services__ToolSearchGateway__Url": "<gateway-fqdn>",
       "Toolbox__McpEndpoint": "<project-endpoint>/toolboxes/foundry-iq/mcp?api-version=v1",
@@ -247,7 +247,7 @@ param location string
 param tags object
 param foundryProjectEndpoint string
 param containerRegistryLoginServer string
-param foundryModel string = 'gpt-4o-mini'
+param foundryModel string = 'gpt-5.4-mini'
 param appInsightsConnectionString string
 param gatewayUrl string
 param agentName string = 'claw-agent'
@@ -425,7 +425,7 @@ cat > /tmp/metadata.json << 'EOF'
     "environment_variables": {
       "ASPNETCORE_HTTP_PORTS": "8080",
       "Agent__HostedMode": "foundry",
-      "Foundry__Model": "gpt-4o-mini"
+      "Foundry__Model": "gpt-5.4-mini"
     }
   }
 }

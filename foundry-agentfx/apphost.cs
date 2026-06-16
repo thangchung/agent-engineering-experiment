@@ -1,4 +1,4 @@
-#:sdk Aspire.AppHost.Sdk@13.3.5+70b33bcb5f64c75e3ab6f57616545f35bd43dc81
+#:sdk Aspire.AppHost.Sdk@13.4.2+70b33bcb5f64c75e3ab6f57616545f35bd43dc81
 #:project src/Coffeeshop.Mcp/Coffeeshop.Mcp.csproj
 #:project src/ToolSearch.Gateway/ToolSearch.Gateway.csproj
 #:project src/Claw.Agent/Claw.Agent.csproj
@@ -47,7 +47,7 @@ var gateway = builder.AddProject<Projects.ToolSearch_Gateway>("toolsearch-gatewa
     .WithEnvironment("APPLICATIONINSIGHTS_CONNECTION_STRING", appInsightsConn)
     .WaitFor(coffeeshop);
 
-var clawApi = builder.AddProject<Projects.Claw_Api>("claw-agent")
+var clawApi = builder.AddProject<Projects.Claw_Agent>("claw-agent")
     .WithHttpEndpoint(port: 5000, name: "http")
     // Gateway URL — resolved automatically from Aspire service discovery
     .WithEnvironment("Services__ToolSearchGateway__Url", gateway.GetEndpoint("http"))

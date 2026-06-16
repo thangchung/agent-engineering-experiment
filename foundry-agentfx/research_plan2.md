@@ -50,8 +50,8 @@ agent = agents_client.create_version(
 
 **Environment-per-config files:**
 ```
-config/agent-config.dev.json   → gpt-4o-mini, eval threshold 3.0
-config/agent-config.test.json  → gpt-4o-mini, eval threshold 3.0
+config/agent-config.dev.json   → gpt-5.4-mini, eval threshold 3.0
+config/agent-config.test.json  → gpt-5.4-mini, eval threshold 3.0
 config/agent-config.prod.json  → gpt-4o, eval threshold 4.0
 ```
 

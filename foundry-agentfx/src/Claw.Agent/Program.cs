@@ -1,3 +1,4 @@
+using System.ClientModel;
 using Azure.AI.AgentServer.Invocations;
 using Azure.AI.Projects;
 using Azure.Identity;
@@ -7,15 +8,12 @@ using Claw.Core;
 using GitHub.Copilot.SDK;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Trace;
+using OpenAI;
+using OpenAI.Chat;
 using Scalar.AspNetCore;
-// UseAIContextProviders extension is in Microsoft.Extensions.AI namespace via Microsoft.Agents.AI
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Foundry platform injects PORT env var; respect it so /readiness is reachable
-// v16: force rebuild with correct ToolSearch Gateway URL
 var foundryPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(foundryPort) && int.TryParse(foundryPort, out var portNum))
 {
@@ -136,7 +134,7 @@ builder.Services.AddSingleton<AIAgent>(sp =>
             ?? throw new InvalidOperationException("Foundry:Endpoint required when Agent:Provider is 'foundry'.");
         var model = config["Foundry:Model"]
             ?? Environment.GetEnvironmentVariable("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-            ?? "gpt-4o-mini";
+            ?? "gpt-5.4-mini";
 
         startupLog.LogInformation("[Agent] Foundry mode: model={Model} endpoint={Endpoint}", model, endpoint);
 
@@ -149,8 +147,42 @@ builder.Services.AddSingleton<AIAgent>(sp =>
             clientFactory: chatClient => chatClient.AsBuilder()
                 .UseAIContextProviders(skillsProvider)
                 .Build());
-        var otelAgent = new OpenTelemetryAgent(foundryAgent, ClawTelemetry.ActivitySourceName);
-        otelAgent.EnableSensitiveData = sp.GetRequiredService<IHostEnvironment>().IsDevelopment();
+        var otelAgent = new OpenTelemetryAgent(foundryAgent, ClawTelemetry.ActivitySourceName)
+        {
+            EnableSensitiveData = sp.GetRequiredService<IHostEnvironment>().IsDevelopment()
+        };
+
+        return otelAgent;
+    }
+    else if (string.Equals(provider, "byok", StringComparison.OrdinalIgnoreCase))
+    {
+        startupLog.LogInformation("[Agent] BYOK mode: using BYOK mode");
+        var endpoint = config["BYOK:Endpoint"]
+            ?? Environment.GetEnvironmentVariable("BYOK_ENDPOINT")
+            ?? throw new InvalidOperationException("BYOK:Endpoint required when Agent:Provider is 'byok'.");
+        var model = config["BYOK:Model"]
+            ?? Environment.GetEnvironmentVariable("BYOK_AI_MODEL")
+            ?? "gpt-5.4-mini";
+        var key = config["BYOK:Key"]
+            ?? Environment.GetEnvironmentVariable("BYOK_KEY")
+            ?? "<key>";
+
+        startupLog.LogInformation("[Agent] BYOK mode: model={Model} endpoint={Endpoint}", model, endpoint);
+        var clientOptions = new OpenAIClientOptions() { Endpoint = new Uri(endpoint) };
+        var client = new OpenAIClient(new ApiKeyCredential(key), clientOptions);
+        var agent = client.GetChatClient(model).AsAIAgent(
+            instructions: systemMessage,
+            name: "ClawAgent",
+            tools: tools,
+            clientFactory: chatClient => chatClient.AsBuilder()
+                .UseAIContextProviders(skillsProvider)
+                .Build());
+
+        var otelAgent = new OpenTelemetryAgent(agent, ClawTelemetry.ActivitySourceName)
+        {
+            EnableSensitiveData = sp.GetRequiredService<IHostEnvironment>().IsDevelopment()
+        };
+
         return otelAgent;
     }
 

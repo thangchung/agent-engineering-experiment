@@ -143,7 +143,7 @@ resource toolsearchGateway 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
             { name: 'ASPNETCORE_HTTP_PORTS', value: '8080' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-            { name: 'Services__CoffeeshopMcp__Url', value: 'http://${coffeeshopMcp.properties.latestRevisionFqdn}' }
+            { name: 'Services__CoffeeshopMcp__Url', value: 'https://${coffeeshopMcp.properties.configuration.ingress.fqdn}' }
             { name: 'FoundryIQ__SearchEndpoint', value: foundryIqEndpoint }
             { name: 'FoundryIQ__KnowledgeBaseName', value: foundryIqKbName }
             { name: 'FoundryIQ__ApiKey', value: foundryIqApiKey }
@@ -244,6 +244,6 @@ resource existingFoundryProject 'Microsoft.CognitiveServices/accounts/projects@2
   name: '${foundryAccountName}/${last(split(foundryProjectResourceId, '/'))}'
 }
 
-output clawChannelsUrl string = 'https://${clawChannels.properties.latestRevisionFqdn}'
-output coffeeshopMcpUrl string = 'https://${coffeeshopMcp.properties.latestRevisionFqdn}'
-output toolsearchGatewayUrl string = 'https://${toolsearchGateway.properties.latestRevisionFqdn}'
+output clawChannelsUrl string = 'https://${clawChannels.properties.configuration.ingress.fqdn}'
+output coffeeshopMcpUrl string = 'https://${coffeeshopMcp.properties.configuration.ingress.fqdn}'
+output toolsearchGatewayUrl string = 'https://${toolsearchGateway.properties.configuration.ingress.fqdn}'

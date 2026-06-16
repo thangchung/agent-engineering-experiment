@@ -9,8 +9,8 @@ param location string = 'westus'
 @description('Model deployment name (alias used by the app)')
 param modelDeploymentName string = 'gpt-5.4-mini'
 
-@description('Actual Azure OpenAI model name to deploy (e.g. gpt-4o-mini, gpt-4.1-mini)')
-param modelName string = 'gpt-4o-mini'
+@description('Actual Azure OpenAI model name to deploy (e.g. gpt-5.4-mini, gpt-4.1-mini)')
+param modelName string = 'gpt-5.4-mini'
 
 @description('Azure OpenAI model version')
 param modelVersion string = '2024-07-18'
@@ -125,6 +125,7 @@ module containerApps 'modules/container-apps.bicep' = if (toLower(skipContainerA
 // ── Outputs ───────────────────────────────────────────────────────────────────
 
 output AZURE_RESOURCE_GROUP string = rg.name
+output AZURE_TENANT_ID string = tenant().tenantId
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
 output AZURE_CONTAINER_REGISTRY_NAME string = containerRegistry.outputs.registryName
 
@@ -135,6 +136,7 @@ output AZURE_OPENAI_ENDPOINT string = aiProject.outputs.AZURE_OPENAI_ENDPOINT
 output AZURE_AI_MODEL_DEPLOYMENT_NAME string = modelDeploymentName
 output AZURE_AI_ACCOUNT_NAME string = aiProject.outputs.aiServicesAccountName
 output AZURE_AI_PROJECT_NAME string = aiProject.outputs.projectName
+output AZURE_AI_PROJECT_ID string = aiProject.outputs.projectId
 
 // Monitoring
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = aiProject.outputs.APPLICATIONINSIGHTS_CONNECTION_STRING
