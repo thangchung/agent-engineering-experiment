@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop Runtime — Mock UI</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+    background: #0f0f11;
+    color: #e2e2e7;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 4rem;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: #a78bfa;
+    margin-bottom: 2rem;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 780px;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  label {
+    display: block;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #71717a;
+    margin-bottom: .5rem;
+  }
+
+  textarea, input[type="text"] {
+    width: 100%;
+    background: #09090b;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    color: #e2e2e7;
+    font-family: inherit;
+    font-size: .9rem;
+    padding: .65rem .85rem;
+    resize: vertical;
+    outline: none;
+    transition: border-color .15s;
+  }
+  textarea:focus, input[type="text"]:focus {
+    border-color: #7c3aed;
+  }
+
+  .row {
+    display: flex;
+    gap: .75rem;
+    align-items: flex-end;
+  }
+  .row textarea { flex: 1; }
+
+  button {
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: .875rem;
+    font-weight: 600;
+    padding: .65rem 1.4rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
+    align-self: flex-end;
+  }
+  button:hover { background: #6d28d9; }
+  button:active { background: #5b21b6; }
+  button.running {
+    background: #3f3f46;
+    cursor: not-allowed;
+  }
+
+  /* iteration badges */
+  .meta {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    margin-bottom: .75rem;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: .2rem .55rem;
+    border-radius: 999px;
+  }
+  .badge-iter  { background: #1e1b4b; color: #a5b4fc; }
+  .badge-pass  { background: #052e16; color: #4ade80; }
+  .badge-fail  { background: #3b0764; color: #e879f9; }
+  .badge-run   { background: #1c1917; color: #fb923c; }
+
+  /* code output */
+  pre {
+    background: #09090b;
+    border: 1px solid #27272a;
+    border-radius: 6px;
+    padding: .85rem 1rem;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: .8rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    color: #d4d4d8;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+  .kw  { color: #c084fc; }
+  .fn  { color: #60a5fa; }
+  .num { color: #fb923c; }
+  .cm  { color: #52525b; }
+  .str { color: #86efac; }
+
+  /* checker panel */
+  .checker-header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: .85rem;
+  }
+  .checker-header h2 {
+    font-size: .875rem;
+    font-weight: 600;
+    color: #a1a1aa;
+  }
+
+  .verdict-block {
+    border-left: 3px solid #27272a;
+    padding-left: .85rem;
+    margin-bottom: 1rem;
+  }
+  .verdict-block.pass { border-color: #16a34a; }
+  .verdict-block.fail { border-color: #7e22ce; }
+
+  .verdict-title {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin-bottom: .35rem;
+  }
+  .pass .verdict-title { color: #4ade80; }
+  .fail .verdict-title { color: #e879f9; }
+
+  .verdict-body {
+    font-size: .8rem;
+    color: #a1a1aa;
+    line-height: 1.55;
+  }
+  .verdict-body code {
+    background: #27272a;
+    border-radius: 3px;
+    padding: .1rem .35rem;
+    font-size: .75rem;
+    color: #d4d4d8;
+  }
+
+  .fixes {
+    list-style: none;
+    margin-top: .4rem;
+  }
+  .fixes li::before {
+    content: "→ ";
+    color: #7c3aed;
+    font-weight: 700;
+  }
+  .fixes li {
+    font-size: .8rem;
+    color: #a1a1aa;
+    line-height: 1.6;
+  }
+
+  .stdout-block {
+    margin-top: .6rem;
+  }
+  .stdout-block label { margin-bottom: .3rem; }
+  .stdout-block pre { max-height: 100px; }
+
+  hr.divider {
+    border: none;
+    border-top: 1px solid #27272a;
+    margin: .85rem 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>Loop Runtime</h1>
+
+<!-- ── INPUT ── -->
+<div class="card">
+  <label for="task">Describe the problem</label>
+  <div class="row">
+    <textarea id="task" rows="3" placeholder="e.g. Write a Fibonacci program that prints the first 20 numbers">Write a Fibonacci program that prints the first 20 numbers</textarea>
+    <button id="btn" onclick="runMock()">Generate</button>
+  </div>
+</div>
+
+<!-- ── GENERATED CODE ── -->
+<div class="card" id="code-card">
+  <div class="meta">
+    <span class="badge badge-iter">Iteration 3 / 5</span>
+    <span class="badge badge-run">outputs/fibo_20250710T143201.py</span>
+  </div>
+  <label>Generated code — Executor (HarnessAgent)</label>
+  <pre id="code-out"><span class="cm"># outputs/fibo_20250710T143201.py</span>
+<span class="kw">def</span> <span class="fn">fibonacci</span>(n: <span class="fn">int</span>) -> <span class="fn">list</span>[<span class="fn">int</span>]:
+    a, b = <span class="num">0</span>, <span class="num">1</span>
+    result = []
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n):
+        result.<span class="fn">append</span>(a)
+        a, b = b, a + b
+    <span class="kw">return</span> result
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    <span class="kw">for</span> x <span class="kw">in</span> <span class="fn">fibonacci</span>(<span class="num">20</span>):
+        <span class="fn">print</span>(x)</pre>
+</div>
+
+<!-- ── CHECKER ── -->
+<div class="card" id="checker-card">
+  <div class="checker-header">
+    <h2>Checker — DelegateLoopEvaluator</h2>
+    <span class="badge badge-pass" id="verdict-badge">PASS</span>
+  </div>
+
+  <!-- iteration 1 fail -->
+  <div class="verdict-block fail">
+    <div class="verdict-title">Iteration 1 — Fail</div>
+    <div class="verdict-body">
+      <code>exitCode: 1</code>&nbsp; <code>timedOut: false</code>
+      <br>Reason: <code>NameError: name 'fib' is not defined</code>
+      <ul class="fixes">
+        <li>Define function before calling it or use correct name <code>fibonacci</code></li>
+        <li>Check import at top of file</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- iteration 2 fail -->
+  <div class="verdict-block fail">
+    <div class="verdict-title">Iteration 2 — Fail</div>
+    <div class="verdict-body">
+      <code>exitCode: 1</code>&nbsp; <code>timedOut: false</code>
+      <br>Reason: <code>IndentationError: unexpected indent (line 7)</code>
+      <ul class="fixes">
+        <li>Remove extra indent on return statement</li>
+      </ul>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- iteration 3 pass -->
+  <div class="verdict-block pass">
+    <div class="verdict-title">Iteration 3 — Pass</div>
+    <div class="verdict-body">
+      <code>exitCode: 0</code>&nbsp; <code>timedOut: false</code>
+      <br>Build ok. Ran clean. No stderr.
+    </div>
+    <div class="stdout-block">
+      <label>stdout</label>
+      <pre>0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55
+89
+144
+233
+377
+610
+987
+1597
+2584
+4181</pre>
+    </div>
+  </div>
+
+  <div style="font-size:.75rem;color:#52525b;margin-top:.5rem;">LoopEvaluation.Stop() — loop terminated at iteration 3</div>
+</div>
+
+<script>
+// fake states to cycle through on Generate click
+const states = [
+  {
+    iter: "1 / 5", file: "outputs/fibo_20250710T143201.py",
+    badge: "FAIL", badgeClass: "badge-fail",
+    code: `<span class="cm"># outputs/fibo_20250710T143201.py</span>\n<span class="kw">def</span> <span class="fn">fibonacci</span>(n):\n    a, b = <span class="num">0</span>, <span class="num">1</span>\n    result = []\n    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n):\n        result.<span class="fn">append</span>(a)\n        a, b = b, a + b\n    <span class="kw">return</span> result\n\n<span class="fn">fib</span>(<span class="num">20</span>)  <span class="cm"># wrong name</span>`,
+    checker: `<div class="verdict-block fail"><div class="verdict-title">Iteration 1 — Fail</div><div class="verdict-body"><code>exitCode: 1</code>&nbsp;<code>timedOut: false</code><br>Reason: <code>NameError: name 'fib' is not defined</code><ul class="fixes"><li>Call correct function name <code>fibonacci</code></li></ul></div></div><div style="font-size:.75rem;color:#52525b;margin-top:.5rem;">LoopEvaluation.Continue() — feedback sent to Executor</div>`
+  },
+  {
+    iter: "2 / 5", file: "outputs/fibo_20250710T143201.py",
+    badge: "FAIL", badgeClass: "badge-fail",
+    code: `<span class="cm"># outputs/fibo_20250710T143201.py  (edited)</span>\n<span class="kw">def</span> <span class="fn">fibonacci</span>(n):\n    a, b = <span class="num">0</span>, <span class="num">1</span>\n    result = []\n    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n):\n        result.<span class="fn">append</span>(a)\n        a, b = b, a + b\n        <span class="kw">return</span> result  <span class="cm"># bad indent</span>\n\n<span class="kw">for</span> x <span class="kw">in</span> <span class="fn">fibonacci</span>(<span class="num">20</span>): <span class="fn">print</span>(x)`,
+    checker: `<div class="verdict-block fail"><div class="verdict-title">Iteration 2 — Fail</div><div class="verdict-body"><code>exitCode: 1</code>&nbsp;<code>timedOut: false</code><br>Reason: <code>IndentationError: unexpected indent (line 8)</code><ul class="fixes"><li>Move <code>return</code> outside the for-loop body</li></ul></div></div><div style="font-size:.75rem;color:#52525b;margin-top:.5rem;">LoopEvaluation.Continue() — feedback sent to Executor</div>`
+  },
+  {
+    iter: "3 / 5", file: "outputs/fibo_20250710T143201.py",
+    badge: "PASS", badgeClass: "badge-pass",
+    code: `<span class="cm"># outputs/fibo_20250710T143201.py  (edited)</span>\n<span class="kw">def</span> <span class="fn">fibonacci</span>(n: <span class="fn">int</span>) -> <span class="fn">list</span>[<span class="fn">int</span>]:\n    a, b = <span class="num">0</span>, <span class="num">1</span>\n    result = []\n    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n):\n        result.<span class="fn">append</span>(a)\n        a, b = b, a + b\n    <span class="kw">return</span> result\n\n<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:\n    <span class="kw">for</span> x <span class="kw">in</span> <span class="fn">fibonacci</span>(<span class="num">20</span>):\n        <span class="fn">print</span>(x)`,
+    checker: `<div class="verdict-block pass"><div class="verdict-title">Iteration 3 — Pass</div><div class="verdict-body"><code>exitCode: 0</code>&nbsp;<code>timedOut: false</code><br>Build ok. Ran clean. No stderr.</div><div class="stdout-block"><label>stdout</label><pre>0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181</pre></div></div><div style="font-size:.75rem;color:#52525b;margin-top:.5rem;">LoopEvaluation.Stop() — loop terminated at iteration 3</div>`
+  }
+];
+
+let step = 2; // default shows state index 2 (pass)
+
+function runMock() {
+  const btn = document.getElementById('btn');
+  btn.textContent = 'Running…';
+  btn.classList.add('running');
+  btn.disabled = true;
+
+  setTimeout(() => {
+    step = (step + 1) % states.length;
+    const s = states[step];
+
+    // meta
+    document.querySelector('.meta .badge-iter').textContent = `Iteration ${s.iter}`;
+    document.querySelector('.meta .badge-run').textContent = s.file;
+
+    // code
+    document.getElementById('code-out').innerHTML = s.code;
+
+    // verdict badge
+    const vb = document.getElementById('verdict-badge');
+    vb.textContent = s.badge;
+    vb.className = 'badge ' + s.badgeClass;
+
+    // checker body
+    const ch = document.querySelector('#checker-card');
+    const hdr = ch.querySelector('.checker-header');
+    // replace everything after header
+    const old = [...ch.children].filter(el => !el.classList.contains('checker-header'));
+    old.forEach(el => el.remove());
+    const div = document.createElement('div');
+    div.innerHTML = s.checker;
+    [...div.children].forEach(c => ch.appendChild(c));
+
+    btn.textContent = 'Generate';
+    btn.classList.remove('running');
+    btn.disabled = false;
+  }, 900);
+}
+</script>
+</body>
+</html>

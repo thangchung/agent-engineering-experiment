@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\LoopRuntime.Contracts\LoopRuntime.Contracts.csproj" />
+    <ProjectReference Include="..\LoopRuntime.Sandbox\LoopRuntime.Sandbox.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- LoopAgent, DelegateLoopEvaluator, IChatClient.AsAIAgent -->
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <!-- A2AClient and A2AAgent -->
+    <PackageReference Include="Microsoft.Agents.AI.A2A" />
+    <PackageReference Include="A2A" />
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
+    <!-- IChatClient, ChatMessage, AITool, AIFunctionFactory -->
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Identity.Abstractions" />
+    <PackageReference Include="Microsoft.Identity.Web.AgentIdentities" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+
+</Project>

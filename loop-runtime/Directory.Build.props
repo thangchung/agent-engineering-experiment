@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!--
+      MAAI001 = Microsoft.Agents.AI experimental pragma (LoopAgent, DelegateLoopEvaluator, etc.)
+      OPENAI001 = experimental OpenAI APIs via Extensions.AI
+    -->
+    <NoWarn>$(NoWarn);MAAI001;OPENAI001;</NoWarn>
+  </PropertyGroup>
+</Project>

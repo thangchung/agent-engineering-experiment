@@ -1,0 +1,55 @@
+## .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userprefs
+*.lock.json
+
+## Build artifacts
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+*.vspscc
+*.vssscc
+
+## Visual Studio / VS Code
+.vs/
+.vscode/
+*.code-workspace
+
+## Rider / IntelliJ
+.idea/
+*.sln.iml
+
+## Aspire
+.aspire/
+
+## User secrets
+secrets.json
+
+## OS files
+.DS_Store
+Thumbs.db
+
+## Test / coverage
+TestResults/
+coverage/
+coverage.json
+coverage.xml
+
+## Docker / local data
+data/
+*.db
+
+## Node / frontend (if added later)
+node_modules/
+dist/
+build/
+
+.playwright-mcp/
+tools/local-fic-issuer/.state
+appsettings.Development.json

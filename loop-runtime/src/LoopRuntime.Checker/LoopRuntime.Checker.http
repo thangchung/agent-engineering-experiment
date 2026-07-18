@@ -1,0 +1,6 @@
+@LoopRuntime.Checker_HostAddress = http://localhost:5075
+
+GET {{LoopRuntime.Checker_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

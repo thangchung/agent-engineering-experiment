@@ -1,0 +1,6 @@
+{
+  "appHost": {
+    "path": "src/LoopRuntime.AppHost/LoopRuntime.AppHost.csproj",
+    "language": "csharp"
+  }
+}

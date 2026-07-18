@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <AssemblyName>LoopRuntime.Executor</AssemblyName>
+    <RootNamespace>LoopRuntime.Executor</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LoopRuntime.Contracts\LoopRuntime.Contracts.csproj" />
+    <ProjectReference Include="..\LoopRuntime.Agents\LoopRuntime.Agents.csproj" />
+    <ProjectReference Include="..\LoopRuntime.Sandbox\LoopRuntime.Sandbox.csproj" />
+    <ProjectReference Include="..\LoopRuntime.ServiceDefaults\LoopRuntime.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Identity.Web" />
+    <PackageReference Include="Microsoft.Identity.Web.AgentIdentities" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LoopRuntime.Tests" />
+  </ItemGroup>
+
+</Project>

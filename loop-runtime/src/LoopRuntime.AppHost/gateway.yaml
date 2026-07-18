@@ -1,0 +1,153 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+config:
+  adminAddr: 0.0.0.0:15000
+  readinessAddr: 0.0.0.0:15021
+  database:
+    url: sqlite:///data/agentgateway.db
+  tracing:
+    otlpEndpoint: http://host.docker.internal:4317
+    otlpProtocol: grpc
+binds:
+- port: 3032
+  listeners:
+  - name: public
+    protocol: HTTP
+    routes:
+    - name: a2a
+      matches:
+      - path: { exact: / }
+        method: POST
+      - path: { exact: /.well-known/agent-card.json }
+      policies:
+        jwtAuth:
+          mode: strict
+          issuer: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/v2.0
+          audiences: ["40d39e9a-69f7-4bf2-b50e-c126c07fd2bd"]
+          jwks:
+            url: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/discovery/v2.0/keys
+      backends:
+      - host: host.docker.internal:5002
+        policies:
+          a2a: {}
+          backendAuth:
+            passthrough: {}
+
+    - name: mcp-from-exec
+      matches:
+      - path: { pathPrefix: /mcp-from-exec }
+      policies:
+        jwtAuth:
+          mode: strict
+          issuer: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/v2.0
+          audiences: ["b228aac6-5596-4cd6-bf8e-8bc343613268"]
+          jwks:
+            url: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/discovery/v2.0/keys
+      backends:
+      - mcp:
+          targets:
+          - name: mcp
+            mcp:
+              host: http://host.docker.internal:5001/
+        policies:
+          backendAuth:
+            passthrough: {}
+
+    - name: mcp-from-checker
+      matches:
+      - path: { pathPrefix: /mcp-from-checker }
+      policies:
+        jwtAuth:
+          mode: strict
+          issuer: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/v2.0
+          audiences: ["b228aac6-5596-4cd6-bf8e-8bc343613268"]
+          jwks:
+            url: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/discovery/v2.0/keys
+      backends:
+      - mcp:
+          targets:
+          - name: mcp
+            mcp:
+              host: http://host.docker.internal:5001/
+        policies:
+          backendAuth:
+            passthrough: {}
+
+    - name: executor
+      matches:
+      - path: { pathPrefix: /run }
+        method: POST
+      - path: { pathPrefix: /run }
+        method: OPTIONS
+      policies:
+        cors:
+          allowOrigins:
+          - http://localhost:5003
+          allowHeaders:
+          - authorization
+          - content-type
+          allowMethods:
+          - POST
+          - OPTIONS
+        jwtAuth:
+          mode: strict
+          issuer: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/v2.0
+          audiences: ["ba511c70-c2c8-4374-94d3-26742a4ede58"]
+          jwks:
+            url: https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b/discovery/v2.0/keys
+      backends:
+      - host: host.docker.internal:5003
+        policies:
+          backendAuth:
+            passthrough: {}
+llm:
+  port: 4000
+  providers:
+  - name: azure
+    provider: azure
+    params:
+      azureResourceName: coffeeshop-project-resource
+      azureResourceType: openAI
+      apiKey: ${AZURE_OPENAI_API_KEY}
+  models:
+  - name: gpt-5.4-mini
+    provider:
+      reference: azure
+    params:
+      model: gpt-5.4-mini
+  virtualModels: []
+  policies:
+    cors:
+      allowOrigins:
+      - http://localhost:16000
+      allowHeaders:
+      - '*'
+      allowMethods:
+      - GET
+      - POST
+      - OPTIONS
+      exposeHeaders:
+      - '*'
+frontendPolicies:
+  http:
+    maxBufferSize: 33554432
+  accessLog:
+    add:
+      route.name: route.name
+mcp:
+  port: 16001
+  targets:
+  - name: loop-runtime-mcp
+    mcp:
+      host: http://host.docker.internal:5001
+  policies:
+    cors:
+      allowOrigins:
+      - http://localhost:16000
+      allowHeaders:
+      - '*'
+      allowMethods:
+      - GET
+      - POST
+      - OPTIONS
+      exposeHeaders:
+      - Mcp-Session-Id

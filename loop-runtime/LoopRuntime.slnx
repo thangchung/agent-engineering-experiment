@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LoopRuntime.Agents/LoopRuntime.Agents.csproj" />
+    <Project Path="src/LoopRuntime.AppHost/LoopRuntime.AppHost.csproj" />
+    <Project Path="src/LoopRuntime.Checker/LoopRuntime.Checker.csproj" />
+    <Project Path="src/LoopRuntime.Contracts/LoopRuntime.Contracts.csproj" />
+    <Project Path="src/LoopRuntime.Executor/LoopRuntime.Executor.csproj" />
+    <Project Path="src/LoopRuntime.Mcp/LoopRuntime.Mcp.csproj" />
+    <Project Path="src/LoopRuntime.Sandbox/LoopRuntime.Sandbox.csproj" />
+    <Project Path="src/LoopRuntime.ServiceDefaults/LoopRuntime.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LoopRuntime.Evals/LoopRuntime.Evals.csproj" />
+    <Project Path="tests/LoopRuntime.Tests/LoopRuntime.Tests.csproj" />
+  </Folder>
+</Solution>

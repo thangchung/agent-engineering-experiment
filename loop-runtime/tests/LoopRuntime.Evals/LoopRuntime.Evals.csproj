@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LoopRuntime.Contracts\LoopRuntime.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\LoopRuntime.Sandbox\LoopRuntime.Sandbox.csproj" />
+    <ProjectReference Include="..\..\src\LoopRuntime.Agents\LoopRuntime.Agents.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+</Project>

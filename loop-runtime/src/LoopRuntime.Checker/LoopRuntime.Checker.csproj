@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\LoopRuntime.Contracts\LoopRuntime.Contracts.csproj" />
+    <ProjectReference Include="..\LoopRuntime.Agents\LoopRuntime.Agents.csproj" />
+    <ProjectReference Include="..\LoopRuntime.Sandbox\LoopRuntime.Sandbox.csproj" />
+    <ProjectReference Include="..\LoopRuntime.ServiceDefaults\LoopRuntime.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A2A endpoint wrapping IChecker (P3) -->
+    <PackageReference Include="Microsoft.Agents.AI.Hosting.A2A" />
+    <PackageReference Include="Microsoft.Agents.AI.Hosting.A2A.AspNetCore" />
+    <PackageReference Include="Microsoft.Identity.Web" />
+    <PackageReference Include="Microsoft.Identity.Web.AgentIdentities" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LoopRuntime.Tests" />
+  </ItemGroup>
+
+</Project>

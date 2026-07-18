@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Loop Runtime</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #06070a;
+      --bg-mid: #0b0f16;
+      --bg-end: #0d1018;
+      --panel: #12141a;
+      --panel-2: #171a22;
+      --border: #252a37;
+      --text: #f3f4f6;
+      --muted: #8b93a8;
+      --code-bg: #090b10;
+      --heading: #c8b6ff;
+      --shadow: rgba(0,0,0,.25);
+      --accent: #8b5cf6;
+      --accent-2: #22c55e;
+      --accent-3: #fb923c;
+      --danger: #e879f9;
+    }
+    body[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --bg-mid: #eef2f7;
+      --bg-end: #e6edf5;
+      --panel: #ffffff;
+      --panel-2: #f2f5f9;
+      --border: #d7deea;
+      --text: #111827;
+      --muted: #5f6b7d;
+      --code-bg: #f8fafc;
+      --heading: #4f46e5;
+      --shadow: rgba(15,23,42,.08);
+      --accent: #4f46e5;
+      --accent-2: #15803d;
+      --accent-3: #c2410c;
+      --danger: #be185d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, var(--bg), var(--bg-mid) 60%, var(--bg-end));
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 3rem;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.35rem; margin: 0; color: var(--heading); }
+    .theme-toggle { border: 1px solid var(--border); border-radius: 999px; padding: .45rem .75rem; font-size: .78rem; color: var(--text); background: var(--panel); box-shadow: 0 8px 24px var(--shadow); }
+    .theme-toggle:hover { filter: none; border-color: var(--accent); }
+    .card { min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.1rem; margin-bottom: 1rem; box-shadow: 0 10px 35px var(--shadow); }
+    label { display: block; margin-bottom: .55rem; font-weight: 700; }
+    .row { display: flex; gap: .8rem; align-items: flex-end; }
+    textarea { display: block; width: 100%; flex: 1; min-height: 90px; border-radius: 10px; border: 1px solid var(--border); background: var(--code-bg); color: var(--text); padding: .8rem .9rem; font: inherit; resize: vertical; }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    button { border: none; border-radius: 10px; padding: .8rem 1.1rem; font-weight: 700; cursor: pointer; color: white; background: var(--accent); }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: .75; cursor: wait; }
+    .meta { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .7rem; }
+    .badge { display: inline-block; border-radius: 999px; padding: .22rem .6rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+    .badge.iter { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+    .badge.run { background: color-mix(in srgb, var(--accent-3) 18%, transparent); color: var(--accent-3); }
+    .badge.pass { background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--accent-2); }
+    .badge.fail { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+    pre { max-width: 100%; margin: 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: .9rem 1rem; overflow: auto; font-size: .82rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+    .split { display: grid; gap: 1rem; grid-template-columns: minmax(0, 3fr) minmax(0, 7fr); }
+    .pill { color: var(--muted); font-size: .8rem; margin-top: .35rem; }
+    .verdict { border-left: 3px solid var(--border); padding-left: .8rem; margin-bottom: .8rem; }
+    .verdict.pass { border-color: var(--accent-2); }
+    .verdict.fail { border-color: var(--danger); }
+    .verdict-title { font-weight: 700; margin-bottom: .25rem; }
+    .verdict.pass .verdict-title { color: var(--accent-2); }
+    .verdict.fail .verdict-title { color: var(--danger); }
+    .fix { color: var(--muted); margin-top: .3rem; }
+    @media (max-width: 780px) { .topbar { align-items: flex-start; } .split { grid-template-columns: 1fr; } .row { flex-direction: column; align-items: stretch;} button { width: 100%; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>Loop Runtime</h1>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">Light mode</button>
+    </div>
+
+    <div class="card">
+      <label for="task">Describe the problem</label>
+      <div class="row">
+        <textarea id="task">Write a Fibonacci program that prints the first 20 numbers</textarea>
+        <button id="runBtn">Generate</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="meta">
+        <span class="badge iter" id="iterBadge">Iteration 0 / 5</span>
+        <span class="badge run" id="fileBadge">pending</span>
+      </div>
+      <label>Generated code</label>
+      <pre id="codeOut">Waiting for a run…</pre>
+      <div class="pill" id="filePill"></div>
+    </div>
+
+    <div class="card">
+      <label>Final Python outcome</label>
+      <textarea id="outcomeOut" readonly rows="10">Waiting for a run…</textarea>
+    </div>
+
+    <div class="split">
+      <div class="card">
+        <label>Checker verdict</label>
+        <div id="checkerBody"></div>
+      </div>
+      <div class="card">
+        <label>Run status</label>
+        <pre id="statusOut">Idle</pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/@azure/msal-browser@3.28.0/lib/msal-browser.min.js" crossorigin="anonymous"></script>
+  <script>
+    const runBtn = document.getElementById('runBtn');
+    const taskBox = document.getElementById('task');
+    const iterBadge = document.getElementById('iterBadge');
+    const fileBadge = document.getElementById('fileBadge');
+    const codeOut = document.getElementById('codeOut');
+    const outcomeOut = document.getElementById('outcomeOut');
+    const checkerBody = document.getElementById('checkerBody');
+    const statusOut = document.getElementById('statusOut');
+    const themeToggle = document.getElementById('themeToggle');
+
+    function applyTheme(theme) {
+      document.body.dataset.theme = theme;
+      themeToggle.textContent = theme === 'light' ? 'Dark mode' : 'Light mode';
+      themeToggle.setAttribute('aria-pressed', String(theme === 'light'));
+      localStorage.setItem('loop-runtime-theme', theme);
+    }
+
+    const savedTheme = localStorage.getItem('loop-runtime-theme');
+    const preferredTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    applyTheme(savedTheme || preferredTheme);
+
+    themeToggle.addEventListener('click', () => {
+      applyTheme(document.body.dataset.theme === 'light' ? 'dark' : 'light');
+    });
+
+    const msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId: "49bdac29-24c3-413e-bf72-5dcfbfe55ed6",
+        authority: "https://login.microsoftonline.com/768437b2-e373-41b5-9748-875e1507d85b",
+        redirectUri: window.location.origin,
+        navigateToLoginRequestUrl: false
+      },
+      cache: { cacheLocation: "sessionStorage", storeAuthStateInCookie: false }
+    });
+
+    const execScope = "api://ba511c70-c2c8-4374-94d3-26742a4ede58/access_as_user";
+
+    async function ensureInitialized() {
+      if (!msalInstance.initialized) {
+        await msalInstance.initialize();
+      }
+    }
+
+    async function getAccessToken() {
+      await ensureInitialized();
+      let account = msalInstance.getAllAccounts()[0];
+      if (!account) {
+        // Redirect in the current window; after Entra returns here, handleRedirectPromise
+        // picks up the token and the button click continues.
+        await msalInstance.loginRedirect({ scopes: [execScope] });
+        return new Promise(() => {}); // page will redirect and never resolve here
+      }
+
+      try {
+        const response = await msalInstance.acquireTokenSilent({ scopes: [execScope], account });
+        return response.accessToken;
+      } catch (error) {
+        // Any silent failure (expired, consent, etc.) -> redirect to get a fresh token.
+        await msalInstance.acquireTokenRedirect({ scopes: [execScope], account });
+        return new Promise(() => {}); // page will redirect and never resolve here
+      }
+    }
+
+    async function run() {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running…';
+      statusOut.textContent = 'Signing in…';
+      try {
+        // If we are returning from a redirect login, resume the session first.
+        await ensureInitialized();
+        const redirectResult = await msalInstance.handleRedirectPromise();
+        if (redirectResult) {
+          statusOut.textContent = 'Signed in after redirect; sending request…';
+        }
+
+        const token = await getAccessToken();
+        if (!token) {
+          // getAccessToken already triggered a redirect; wait for the page to reload.
+          return;
+        }
+
+        statusOut.textContent = 'Sending request…';
+        const res = await fetch('http://localhost:3032/run', {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ prompt: taskBox.value.trim() || 'Write a Fibonacci program that prints the first 20 numbers' })
+        });
+        const bodyText = await res.text();
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${bodyText}`);
+        }
+        const data = JSON.parse(bodyText);
+        const path = data.path || 'pending';
+        const iter = data.iterations ?? 0;
+        const completed = data.completed ?? false;
+        iterBadge.textContent = `Iteration ${iter} / 5`;
+        fileBadge.textContent = completed ? 'done' : 'pending';
+        filePill.textContent = path;
+        codeOut.textContent = data.finalCode || data.finalResponse || 'No output captured.';
+        outcomeOut.value = data.finalCode || 'No final Python code captured.';
+        checkerBody.innerHTML = completed
+          ? '<div class="verdict pass"><div class="verdict-title">PASS</div><div class="fix">Loop completed successfully.</div></div>'
+          : '<div class="verdict fail"><div class="verdict-title">FAIL</div><div class="fix">The loop did not complete successfully.</div></div>';
+        statusOut.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        statusOut.textContent = 'Request failed\n' + String(err);
+        checkerBody.innerHTML = '<div class="verdict fail"><div class="verdict-title">FAIL</div><div class="fix">Could not reach the host endpoint.</div></div>';
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Generate';
+      }
+    }
+
+    runBtn.addEventListener('click', run);
+  </script>
+</body>
+</html>
