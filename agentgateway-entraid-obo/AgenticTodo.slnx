@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AgenticTodo.ServiceDefaults/AgenticTodo.ServiceDefaults.csproj" />
+    <Project Path="src/AgenticTodo.TodoApi/AgenticTodo.TodoApi.csproj" />
+    <Project Path="src/AgenticTodo.TodoAgent/AgenticTodo.TodoAgent.csproj" />
+    <Project Path="src/AgenticTodo.TodoMcpServer/AgenticTodo.TodoMcpServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AgenticTodo.Tests/AgenticTodo.Tests.csproj" />
+    <Project Path="tests/AgenticTodo.Evals/AgenticTodo.Evals.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Xunit.SkippableFact" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AgenticTodo.ServiceDefaults\AgenticTodo.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\AgenticTodo.TodoAgent\AgenticTodo.TodoAgent.csproj" />
+    <ProjectReference Include="..\..\src\AgenticTodo.TodoApi\AgenticTodo.TodoApi.csproj" />
+    <ProjectReference Include="..\..\src\AgenticTodo.TodoMcpServer\AgenticTodo.TodoMcpServer.csproj" />
+  </ItemGroup>
+
+</Project>

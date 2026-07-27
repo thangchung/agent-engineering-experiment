@@ -1,0 +1,10 @@
+.env
+bin/
+obj/
+data/
+
+.playwright-cli
+# Added by code-review-graph
+.code-review-graph/
+
+todos.db

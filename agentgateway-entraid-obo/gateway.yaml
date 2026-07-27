@@ -1,0 +1,133 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+#
+# NOTE: env-var substitution runs on the WHOLE raw file, comments included --
+# never write a literal ${VAR} in a comment unless it's actually set.
+#
+# `audiences:` below are the BARE client-ID GUID, never `api://<clientId>` -- real
+# Entra v2.0 tokens always carry a bare `aud`, and this policy does a literal string
+# match (unlike Microsoft.Identity.Web, which accepts both forms). `api://` stays
+# correct in every *scope* string (oauthTokenExchange.scopes etc) -- only audiences: changed.
+
+config:
+  adminAddr: 0.0.0.0:15000
+  database:
+    url: sqlite:///data/agentgateway.db
+
+binds:
+- port: 3000
+  listeners:
+  - name: public
+    protocol: HTTP
+    routes:
+    # Deliberately no jwtAuth: docs/UI must be loadable before the human has a token.
+    - name: scalar-ui
+      matches:
+      - path:
+          pathPrefix: /scalar
+      backends:
+      - host: host.docker.internal:5001
+        policies:
+          backendAuth:
+            passthrough: {}
+
+    - name: openapi-document
+      matches:
+      - path:
+          pathPrefix: /openapi
+      backends:
+      - host: host.docker.internal:5001
+        policies:
+          backendAuth:
+            passthrough: {}
+
+    - name: todos
+      matches:
+      - path:
+          pathPrefix: /todos
+      policies:
+        jwtAuth:
+          mode: strict
+          issuer: https://login.microsoftonline.com/${TENANT_ID}/v2.0
+          audiences:
+          - ${TODOAPI_CLIENT_ID}
+          jwks:
+            url: https://login.microsoftonline.com/${TENANT_ID}/discovery/v2.0/keys
+      backends:
+      - host: host.docker.internal:5001
+        policies:
+          backendAuth:
+            passthrough: {}
+
+    # Hop-1 OBO exchange: TodoApi -> gateway -> TodoAgent
+    - name: agent-todos
+      matches:
+      - path:
+          pathPrefix: /agent/todos
+      policies:
+        jwtAuth:
+          mode: strict
+          issuer: https://login.microsoftonline.com/${TENANT_ID}/v2.0
+          audiences:
+          - ${TODOAPI_CLIENT_ID}
+          jwks:
+            url: https://login.microsoftonline.com/${TENANT_ID}/discovery/v2.0/keys
+      backends:
+      - host: host.docker.internal:5002
+        policies:
+          backendAuth:
+            oauthTokenExchange:
+              # host MUST be a full https:// URI -- a bare "host:port" string never
+              # enables backendTLS, silently opening a plain TCP connection to a TLS-only port.
+              host: https://login.microsoftonline.com
+              path: /${TENANT_ID}/oauth2/v2.0/token
+              grantType: jwtBearer              # inbound token sent as `assertion`
+              clientAuth:
+                clientId: ${TODOAPI_CLIENT_ID}
+                clientSecret: ${TODOAPI_CLIENT_SECRET}
+                method: clientSecretPost        # client_id/secret in BODY
+              scopes:
+              - api://${TODOAGENT_CLIENT_ID}/access_as_user   # NOT .default (our own API)
+              additionalParams:
+                requested_token_use: '"on_behalf_of"'   # CEL string literal (inner quotes)
+
+    # Use mcpAuthentication ONLY here -- a stacked jwtAuth rejects an already-validated token.
+    - name: mcp
+      matches:
+      - path:
+          pathPrefix: /mcp
+      policies:
+        mcpAuthentication:
+          mode: strict
+          issuer: https://login.microsoftonline.com/${TENANT_ID}/v2.0
+          audiences:
+          - ${TODOMCPSERVER_CLIENT_ID}
+          jwks:
+            url: https://login.microsoftonline.com/${TENANT_ID}/discovery/v2.0/keys
+          resourceMetadata:
+            resource: http://localhost:3000/mcp
+      backends:
+      - mcp:
+          targets:
+          - name: todo-mcp
+            # TodoMcpServer's own MapMcp() serves at root "/", not "/mcp" -- no suffix here.
+            mcp:
+              host: http://host.docker.internal:5003
+            # Sibling of `mcp:`, not nested inside it. Required: mcpAuthentication strips
+            # the Authorization header same as jwtAuth; without this, nothing reaches upstream.
+            policies:
+              backendAuth:
+                passthrough: {}
+
+# `name` below must exactly match the "model" field callers send -- the gateway matches on
+# it literally and 404s otherwise; the real Azure deployment name only appears in params.model.
+llm:
+  port: 4000
+  models:
+  - name: agentic-todo
+    provider: azure
+    params:
+      apiKey: $AZURE_OPENAI_API_KEY
+      azureResourceName: $AZURE_OPENAI_RESOURCE_NAME
+      azureResourceType: foundry
+      azureProjectName: $AZURE_OPENAI_PROJECT_NAME
+      model: $AZURE_OPENAI_DEPLOYMENT

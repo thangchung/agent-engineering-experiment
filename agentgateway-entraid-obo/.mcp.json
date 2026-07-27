@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "uvx",
+      "args": [
+        "code-review-graph",
+        "serve"
+      ],
+      "cwd": "/Users/chungt02/source_codes/oss/agent-engineering-experiment/agentgateway-entraid-obo",
+      "type": "stdio"
+    }
+  }
+}
