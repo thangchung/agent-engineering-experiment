@@ -43,7 +43,7 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 AgenticTodo. Demo of dual Entra ID OBO chain. Human → gateway → TodoApi → gateway
 (hop-1 OBO exchange) → TodoAgent → hop-2 Entra **Agent ID** OBO → gateway → TodoMcpServer
 → EF/SQLite. TodoAgent also hits gateway's LLM route → Foundry Azure OpenAI. **Full mesh**:
-every hop through agentgateway v1.4.0-alpha.2, not just ingress. Stack: .NET 10, Aspire,
+every hop through agentgateway v1.4.0-beta.1, not just ingress. Stack: .NET 10, Aspire,
 agentgateway, MCP C# SDK, Microsoft Agent Framework.
 
 `prd.md`, `arch.md`, `plan/feature-agentic-todo-obo-1.md` = source of truth. Ref them first

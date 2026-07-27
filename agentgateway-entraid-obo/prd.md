@@ -1,7 +1,7 @@
 # PRD — Agentic Todo with Dual Entra OBO Chain
 
-> **Status:** Draft v1.0 · **Date:** 2026-07-23 · **Owner:** chungquang.thang@heineken.com
-> **Stack:** C#/.NET 10 · Aspire · agentgateway v1.4.0-alpha.2 · Microsoft Entra ID + Entra Agent ID · Microsoft Agent Framework · MCP C# SDK · EF Core (SQLite) · OpenTelemetry
+> **Status:** Draft v1.0 · **Date:** 2026-07-23 · **Owner:** thangchung
+> **Stack:** C#/.NET 10 · Aspire · agentgateway v1.4.0-beta.1 (upgraded from alpha.2, 2026-07-27) · Microsoft Entra ID + Entra Agent ID · Microsoft Agent Framework · MCP C# SDK · EF Core (SQLite) · OpenTelemetry
 
 ---
 
@@ -629,3 +629,13 @@ curl -s -X POST "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token
 
 - **RBAC-RISK-1:** Entra's `groups` claim overflows to a `hasgroups: true` marker (requiring a Graph call fallback) once a user belongs to more groups than the overage threshold (default ~200 for JWTs from v2.0 endpoints, exact number tenant/token-type dependent). Not a concern for bob/alice today (1 relevant group each), but a real limit if group count grows — out of scope to solve now, flagged for awareness.
 - **RBAC-RISK-2:** `groupMembershipClaims: "SecurityGroup"` only returns *security* groups, not Microsoft 365 groups or directory roles — both SuperAdminGroup/NormalUserGroup are confirmed security groups, so this is correct for now but would need revisiting (`"All"`) if future groups are of a different type.
+
+## 9. Addendum — Environment Changes (appended 2026-07-27)
+
+- **agentgateway upgraded alpha.2 → beta.1.** `apphost.cs`'s container image tag is now
+  `cr.agentgateway.dev/agentgateway:v1.4.0-beta.1`. Everything in §1-§7 that says "alpha.2"
+  is a historical record of what was true when that work happened — left as-is, not
+  rewritten. Real source diff (route.rs) confirmed route-matching behavior is unchanged
+  between the two versions; the dual-OBO chain, gateway.yaml shape, and all fixes in §7
+  still apply as documented.
+- **Project moved.** Solution root is now `/Users/chungt02/source_codes/oss/agent-engineering-experiment/agentgateway-entraid-obo` — the old `/Users/chungt02/source_codes/temp/agentgateway-entraid-obo` copy is being retired.

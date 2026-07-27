@@ -14,7 +14,7 @@ Greenfield system derived from `prd.md`, patterned on the `loop-runtime` referen
 |---|---|
 | Runtime | .NET 10, `Microsoft.NET.Sdk.Web` |
 | Orchestration | .NET Aspire (AppHost + ServiceDefaults) |
-| Ingress/mesh | agentgateway v1.4.0-alpha.2 (container) |
+| Ingress/mesh | agentgateway v1.4.0-beta.1 (container) |
 | AuthN/Z | Microsoft.Identity.Web (JWT bearer) + Microsoft.Identity.Web.AgentIdentities |
 | Agent | Microsoft Agent Framework (`Microsoft.Agents.AI`, `Microsoft.Extensions.AI`) |
 | LLM | Azure OpenAI in Microsoft Foundry, reached OpenAI-compatible via gateway |
@@ -72,7 +72,7 @@ C4Container
     System_Ext(entra, "Microsoft Entra ID")
     System_Ext(foundry, "Azure OpenAI / Foundry")
     Container_Boundary(sys, "Agentic Todo System") {
-        Container(gw, "agentgateway", "Rust proxy v1.4.0-alpha.2", "Ingress + mesh; jwtAuth per route; hop-1 OBO exchange; LLM key injection")
+        Container(gw, "agentgateway", "Rust proxy v1.4.0-beta.1", "Ingress + mesh; jwtAuth per route; hop-1 OBO exchange; LLM key injection")
         Container(api, "TodoApi", ".NET 10 Minimal API + OpenAPI", "Entry endpoints; thin (primary) or OBO (fallback)")
         Container(agent, "TodoAgent", ".NET 10 + Agent Framework", "Generates description; hop-2 Agent-ID OBO; MCP client")
         Container(mcp, "TodoMcpServer", ".NET 10 MCP server", "create_todo/list_todos tools; owns persistence")
@@ -397,7 +397,7 @@ builder.Services.AddScoped<ITodoSink, McpTodoSink>();
 ---
 
 ## 12. Deployment Architecture
-- **Local:** Aspire AppHost orchestrates the **published** gateway image (`cr.agentgateway.dev/agentgateway:v1.4.0-alpha.2`) + three projects; gateway is the public endpoint and fronts the human→TodoApi hop too (full mesh, R-A2). Agent uses a **client secret** (no local FIC issuer needed, R-2).
+- **Local:** Aspire AppHost orchestrates the **published** gateway image (`cr.agentgateway.dev/agentgateway:v1.4.0-beta.1`) + three projects; gateway is the public endpoint and fronts the human→TodoApi hop too (full mesh, R-A2). Agent uses a **client secret** (no local FIC issuer needed, R-2).
 - **Env config (operator-supplied):** `Hop1:Mode`, `AI:Provider=gateway`, agent client secret, and Foundry `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_DEPLOYMENT`/`AZURE_OPENAI_API_KEY` into the gateway (R-A5).
 - **Prod (out of scope v1):** container apps behind gateway; **FIC (MI+WIF)** replaces the dev client secret; SQLite → managed store as a repository-adapter swap.
 
@@ -543,7 +543,7 @@ Wiring facts a first-timer misses. **High confidence** — but each has a "verif
 
 Answers folded in (2026-07-23). Identity/tenant decisions are in `prd.md` §7 (R-1..R-5).
 
-- **R-A1 Gateway image.** Pull the **published** image `cr.agentgateway.dev/agentgateway:v1.4.0-alpha.2` (from the GitHub release) — no local build. Applied in AppHost (prd §4.4).
+- **R-A1 Gateway image.** Pull the **published** image `cr.agentgateway.dev/agentgateway:v1.4.0-beta.1` (from the GitHub release, upgraded from alpha.2 on 2026-07-27) — no local build. Applied in AppHost (prd §4.4).
 - **R-A2 Local-dev ingress.** **Full mesh** — the human→TodoApi hop goes through the gateway too (matches prod). Accept the container↔host networking cost (CN-E).
 - **R-A3 MCP transport.** MCP goes **through the gateway over Streamable HTTP** — ✅ supported (CN-B), MCP-aware proxy route. PRV-1 ✅ resolved live: gateway forwards the user OBO bearer to TodoMcpServer only once an explicit `backendAuth: { passthrough: {} }` policy is added on the MCP target (source-only `ctx.apply` prediction was incomplete — `mcpAuthentication` strips the header by default, see §18 CN-C/PRV-1). Use `mcpAuthentication` only on `/mcp`.
 - **R-A4 Reuse from loop-runtime.** **Reuse** `ServiceDefaults`, `ChatClientProvider`, and the FIC issuer as-is; **adapt** the Entra setup scripts to this project's 3-app todo domain (TodoApi, TodoAgent Blueprint+Agent Identity, TodoMcpServer). So §10 is mostly *adapted*, not clean-room.
