@@ -85,6 +85,7 @@ public static class Extensions
                         "McpServer.CodeMode.DiscoveryTools",
                         "McpServer.CodeMode.ExecuteTool",
                         "McpServer.CodeMode.LocalConstrainedRunner",
+                        "McpServer.CodeMode.HyperlightSandboxRunner",
                         "McpServer.CodeMode.OpenSandboxRunner")
                     .AddAspNetCoreInstrumentation(options =>
                     {
