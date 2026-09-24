@@ -1,6 +1,10 @@
 # coffeeshop-jev — tasks
 
-Source of truth: `research.md` rev 8. Section refs (§x, B#, G#, U#, Q#, R-*) point there. **Not implemented yet.** (Phase 1a T01-T20 is actually implemented already, per PROGRESS.md; this file's own status markers were never updated after the fact — treat Phase 1a as done, Phase 1b onward as the real "not implemented yet".)
+Source of truth: `research.md` rev 9. Section refs (§x, B#, G#, U#, Q#, R-*) point there.
+**Status:** Phase 1a (T01-T20) is done, per PROGRESS.md. Phase 1b (T21-T29, guards) was
+explicitly **skipped by user decision** (2026-09-24) to go straight to evals. T30-T33 and
+T36(partial)/T37/T37a are done in reduced scope — see research.md §10.9 for exactly what
+shipped vs. what was descoped. T34/T35/T38/T39/T40/T41 remain **not implemented**.
 Phases follow research §15.1: **0** probe → **1a** skeleton → **1b** guards in shadow → **1c** Jev evals → **2** enforce + agent evals.
 
 ---
@@ -16,12 +20,19 @@ dotnet test tests/CoffeeShop.Tests                                # offline, all
 node --check src/CounterService/wwwroot/app.js                    # JS syntax lint (UI tasks only)
 # + the task's own AC commands below (playwright-cli / live evals)
 ```
-Live checks (`[LIVE]`) need the LAN OpenJev plus the Foundry env vars:
+Live checks (`[LIVE]`) need the LAN OpenJev plus an OpenAI-compatible chat endpoint, either as env
+vars or via `dotnet user-secrets set` against `src/AppHost` (README.md):
 ```bash
 export OPENJEV_URL=http://<localhost>:<local port>
-export FOUNDRY_ENDPOINT=https://<res>.openai.azure.com/openai/v1/ FOUNDRY_KEY=... FOUNDRY_DEPLOYMENT=...
-dotnet test tests/CoffeeShop.Evals                                # [LiveFact] tests skip when the vars are unset
+export OPENAI_BASE_URL=... OPENAI_API_KEY=... OPENAI_MODEL=...
+dotnet test tests/CoffeeShop.Evals
 ```
+**2026-09-24 policy change:** `CoffeeShop.Evals` tests **fail fast** (`EvalConfig.RequireOpenJev`/
+`RequireOpenAi`, thrown `InvalidOperationException` naming exactly what's missing and the fix
+command) when unconfigured - they do **not** skip. This project is never run by the hosted CI job
+(T40: hosted = build/format/CoffeeShop.Tests only, LAN self-hosted = Evals), so an unconfigured
+run of it is always a setup mistake worth surfacing loudly, not a silent green skip. Superseded:
+T01 AC3 below, and the old `LiveFactAttribute`/`LiveOpenAiFactAttribute` (deleted).
 
 ### 0.2 Conventions the ACs rely on
 - Counter's fixed dev URL: `http://localhost:5100` (`$C`). Catalog: `http://localhost:5101`. Both are set in `launchSettings.json` (T01).
@@ -117,13 +128,20 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
   - `Directory.Packages.props` (versions from research §3)
   - `.editorconfig`
   - Empty projects: `src/{AppHost, ServiceDefaults, Jev.Client, ProductCatalogService, CounterService}`, `tests/{CoffeeShop.Tests, CoffeeShop.Evals}`
-  - `LiveFactAttribute` in Evals (skips when `OPENJEV_URL` or `FOUNDRY_*` is unset)
+  - ~~`LiveFactAttribute` in Evals (skips when unset)`~~ - **superseded 2026-09-24**: `EvalConfig.RequireOpenJev`/`RequireOpenAi` fail fast instead (see the Live-checks note above)
   - launchSettings: counter 5100, catalog 5101
   - `CounterService/Program.cs` ends with `public partial class Program;`
 - **AC**
   - AC1 DoD commands pass. `dotnet test` → 0 failed (the placeholder test passes).
   - AC2 `dotnet list package --include-transitive | grep -i preview` → no `Microsoft.Agents.AI*` preview packages (stable-only, research §3).
-  - AC3 `dotnet test tests/CoffeeShop.Evals` with no env vars → all tests **skipped**, exit 0.
+  - AC3 ~~`dotnet test tests/CoffeeShop.Evals` with no env vars → all tests **skipped**, exit 0.~~
+    **Superseded 2026-09-24 (explicit decision):** live tests now **fail fast** with no env vars
+    (or user-secrets) - `EvalConfig.Require*()` throws `InvalidOperationException` naming what's
+    missing and the exact `dotnet user-secrets set` fix, verified live with
+    `appsettings.Development.json` removed: 5 tests fail with that message, the offline ones
+    (`SmokeTests`, `Report`, `JevJudgeEscalationTests`) still pass. Rationale: `CoffeeShop.Evals`
+    is never in the hosted CI path (T40), so "unconfigured" here is always a mistake to surface
+    loudly, not a normal state to skip past quietly.
   - AC4 Central package management is on: no `Version=` attribute in any csproj (`grep -r 'Version=' src/*/*.csproj tests/*/*.csproj` → empty).
 
 ### T02 ServiceDefaults
@@ -460,7 +478,11 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
 ## Phase 1c: Jev evals (L0 + L1)
 
 ### T30 Golden file + loader
-- **Deps:** T29, T00.
+- **Done (2026-09-24, reduced scope):** `golden/orders.jsonl` has 22 cases (G01-G22, not G23-G29 -
+  those are guard-dependent/Phase-2 features not built), `Golden.cs` loader, all offline-parsed.
+  G15 updated to match the shipped `MenuRequested` behavior (research.md §10.3/§10.9). G19 tagged
+  `requires_guard`. Ran without T29 (guards skipped by user decision) - see research.md §10.9.
+- **Deps:** ~~T29~~ (skipped), T00.
 - **Do:** `tests/CoffeeShop.Evals/golden/orders.jsonl` G01–G29 (research §10.3, §11.5, §12.6, with Q5/Q6/Q9 updates); `Golden.cs` loader; tags `simple`, `off_menu`, `injection`, …
 - **AC** (offline tests in `CoffeeShop.Tests` that read the file)
   - AC1 29 cases, unique ids, every line parses.
@@ -470,6 +492,9 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
   - AC5 DoD.
 
 ### T31 GateEvals (L1)
+- **Done (2026-09-24):** `GateEvals.cs`, run live against real OpenJev. `numRepetitions: 3` not
+  implemented (runs once per turn - see research.md §10.9). Real baseline: R-G1 22/27 = 81.5%,
+  R-G3 0 violations (G19 excluded, tagged `requires_guard`). `evals/out/gate.jsonl` written.
 - **Deps:** T30.
 - **Do:** For each case and turn, call Jev with the **same** `GateQuestions.Build` as the app → `EvalItem` → `LocalEvaluator(R-G1, R-G2, R-G3)`. Store the raw probabilities per case in `evals/out/gate.jsonl`. `numRepetitions: 3`.
 - **AC** `[LIVE]`
@@ -479,6 +504,8 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
   - AC4 DoD.
 
 ### T32 StationEvals (L1)
+- **Done (2026-09-24):** `StationEvals.cs`, 22 lines (11 ids + 11 display names), 1 live Jev
+  call. Real baseline: R-S1 22/22 = 100%, R-S2/R-S3 0 violations. `evals/out/station.jsonl`.
 - **Deps:** T30.
 - **Do:** 22 lines (11 ids + 11 display names) → `station_i` + `grounded_i` → R-S1..S3. Raw probabilities stored in `evals/out/station.jsonl`. ×3.
 - **AC** `[LIVE]`
@@ -487,6 +514,9 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
   - AC3 DoD.
 
 ### T33 Report + threshold sweep
+- **Done (2026-09-24, reduced scope):** `Report.cs`, offline, no network, reads `evals/out/*.jsonl`
+  and writes `evals/out/report.md` (gate + station + JevJudge cascade sections). The 0.10-0.90
+  hazard threshold sweep doesn't apply without guards - not implemented (research.md §10.9).
 - **Deps:** T31, T32.
 - **Do:** `Report.cs` reads `evals/out/*.jsonl`, sweeps each threshold 0.10→0.90 in steps of 0.05 offline (no Jev calls), and writes `evals/out/report.md` with the metrics per threshold and the chosen cut-offs. Chosen values are copied into research §12.5, and the pure-policy constants are updated with PolicyTests adjusted.
 - **AC**
@@ -497,6 +527,10 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
   - AC5 DoD.
 
 ### T34 Phase 1c exit
+- **Not done as written:** T31-T33 pass, but R-G1 (81.5%) is below the §10.8 proposal (≥90%) -
+  not waived, just reported as the first real baseline (research.md §10.9). Formally exiting
+  Phase 1c would mean either lowering the proposal or improving gate accuracy first; neither was
+  done, since the actual ask this pass was the eval harness + JevJudge, not locking thresholds.
 - **AC:** T31–T33 pass; `report.md` committed; §10.8 rows R-G*, R-S* are green or explicitly waived with a reason in research.md.
 
 ---
@@ -507,8 +541,9 @@ Parallel lanes, once T01 is done: **{T02→T04}**, **{T03}**, **{T05}**, **{T08�
 |---|---|---|---|
 | T35 Enforce guards | T34 | `Guards:Shadow=false` per guard whose L1 metric passed (per-guard flag if needed) | T29 scenarios: G19/G23/G27 blocked or asked; false block on G01–G15 ≤ 5% |
 | T36 L2 AgentEvals | T34 | `agent.EvaluateAsync` for extract/clarify/tickets/reply with R-E*, R-C*, R-T*, R-D* checks, ×3 | R-E3 ≥ 90% pass^3; R-T2 100%; R-D2 100% |
-| T37 JevJudge + accept/escalate cascade (research §10.6a) | T36 | `IAgentEvaluator` over Jev noul/score; confidence ≥ 0.6 (§4.2 band) → accept Jev verdict; else escalate the item to an LLM judge (Foundry `chatConfiguration:`, same client the 3 agents use); an escalated item the LLM judge is also unsure about → flagged for human review | judge items mean ≥ 0.7; escalation rate reported (no gate, §10.8); cascade retained accuracy ≥ 95% of an LLM-judge-only baseline run over the same golden set; report.md shows accept vs. escalate counts per rubric item (R-C3, R-T4, R-D4) |
-| T37a JevJudge external-validation smoke check (research §10.6a) | T37 | Re-run T37's own R-T4 rubric ("how realistic are these prep steps") 100× over 3 fixed golden tickets (G01, G03, G04 — barista + kitchen mix), no cascade, Jev only | mean per-case score variance reported in report.md; flag (don't gate) if any case's variance is an order of magnitude above the others — the danielgshea benchmark's whole finding was Jev's variance staying flat, so a case that doesn't behave like that is the golden set's own outlier, not proof our Jev deployment is worse |
+| T36 L2 AgentEvals | T34 | **Done (2026-09-24), partial:** only the 3 judge-scored items (R-C3, R-T4, R-D4) get a real captured response (`JudgeCascadeTests.cs`, via the app's own `Prompts.cs` + agent factories). Deterministic R-E/R-C/R-T/R-D checks **not implemented** this pass. | n/a |
+| T37 JevJudge + accept/escalate cascade (research §10.6a) | T36 | **Done (2026-09-24):** `JevJudge.cs` — confidence ≥ 0.6 (§4.2 band, noul uses a distance-from-0.5 proxy) → accept Jev; else escalate to the real Foundry/OpenAI chat client; still-unsure escalated verdict → `HumanReview`. Verified live (`JudgeCascadeTests`, all 3 items accepted by Jev directly, ≥0.98 confidence — escalation never fired live) and offline/deterministic (`JevJudgeEscalationTests`, 4 tests forcing every tier with scripted answers). `evals/out/judge.jsonl` + `report.md`'s cascade section. | 3/3 items judged; offline tests prove all 3 tiers reachable |
+| T37a JevJudge external-validation smoke check (research §10.6a) | T37 | **Done (2026-09-24), reduced N:** `JevJudgeVarianceTests.cs` — 30 reps (not 100, kept the live run fast) × 3 frozen tickets, R-T4 only. `evals/out/judge-variance.md`. | Observed variance 2.4e-6 to 1.9e-5 — same order of magnitude as danielgshea's own 1.49e-5 (independent confirmation on our own deployment) |
 | T38 L3 WorkflowEvals | T36 | the full graph + scripted human via `Run.ResumeAsync`; R-W1..W6 | status/asks 100%; no hang; SubResults present |
 | T39 U4 resolve-by-pick | T38 | `ask → resolve → switch`; offered candidates in scope `"order"` | G29 "the first one" → Completed without an extract LLM call (fake call count) |
 | T40 Self-hosted GH runner | T34 | `.github/workflows/ci.yml`: hosted job = build + format + CoffeeShop.Tests; LAN self-hosted job = Evals | the hosted job is green on a PR; the self-hosted job posts `report.md` as an artifact |

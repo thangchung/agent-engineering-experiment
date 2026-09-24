@@ -7,14 +7,16 @@ using OpenAI;
 namespace CoffeeShop.Evals;
 
 /// <summary>
-/// tasks.md T07 AC4: a real call to the configured OpenAI-compatible deployment. Skipped
-/// unless OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL are all set (LiveOpenAiFactAttribute).
+/// tasks.md T07 AC4: a real call to the configured OpenAI-compatible deployment. Fails fast
+/// (research.md/tasks.md 2026-09-24 decision) with a setup message unless OPENAI_BASE_URL/
+/// OPENAI_API_KEY/OPENAI_MODEL are all configured.
 /// </summary>
 public class AgentLiveSmokeTests
 {
-    [LiveOpenAiFact]
+    [Fact]
     public async Task CounterAgent_SayHi_RepliesInEnglish_NonEmpty()
     {
+        EvalConfig.RequireOpenAi();
         var endpoint = new Uri(EvalConfig.OpenAiBaseUrl!);
         var key = EvalConfig.OpenAiApiKey!;
         var model = EvalConfig.OpenAiModel!;

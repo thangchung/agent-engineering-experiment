@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Jev.Client\Jev.Client.csproj" />
     <ProjectReference Include="..\..\src\CounterService\CounterService.csproj" />
+    <ProjectReference Include="..\CoffeeShop.Tests\CoffeeShop.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>
