@@ -1,0 +1,15 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.5.4">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAspireHost>true</IsAspireHost>
+    <AspireUseCliBundle>true</AspireUseCliBundle>
+    <UserSecretsId>351623b9-4467-4592-82cf-46a33cd69d60</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProductCatalogService\ProductCatalogService.csproj" />
+    <ProjectReference Include="..\CounterService\CounterService.csproj" />
+  </ItemGroup>
+
+</Project>

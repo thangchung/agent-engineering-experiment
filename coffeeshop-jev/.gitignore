@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.playwright-cli/
+
+appsettings.Development.json

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AppHost/AppHost.csproj" />
+    <Project Path="src/CounterService/CounterService.csproj" />
+    <Project Path="src/Jev.Client/Jev.Client.csproj" />
+    <Project Path="src/ProductCatalogService/ProductCatalogService.csproj" />
+    <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CoffeeShop.Evals/CoffeeShop.Evals.csproj" />
+    <Project Path="tests/CoffeeShop.Tests/CoffeeShop.Tests.csproj" />
+  </Folder>
+</Solution>

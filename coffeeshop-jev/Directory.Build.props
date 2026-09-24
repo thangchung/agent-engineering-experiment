@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- CA1707: underscores are the house style for test method names (Method_Scenario_Expected, tasks.md 0.2) -->
+    <!-- CA1711: "Flag" is research.md's own domain name for the confidence-band enum (None/Confirm/Review), not a bitwise [Flags] type -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1707;CA1711</NoWarn>
+  </PropertyGroup>
+</Project>

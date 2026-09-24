@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CoffeeShop.Jev — Counter</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <h1>☕ CoffeeShop.Jev Counter</h1>
+
+  <section class="order-box">
+    <input type="text" id="order-input" data-testid="order-input" placeholder="What would you like to order?" maxlength="500" />
+    <button id="order-submit" data-testid="order-submit">Place order</button>
+  </section>
+
+  <section id="ask-panel" data-testid="ask-panel" hidden>
+    <p id="ask-question" data-testid="ask-question"></p>
+    <input type="text" id="ask-input" data-testid="ask-input" placeholder="Your answer..." />
+    <button id="ask-submit" data-testid="ask-submit">Send</button>
+  </section>
+
+  <div id="error-banner" data-testid="error-banner" class="error" hidden></div>
+
+  <section id="menu-panel" data-testid="menu-panel" hidden>
+    <h2>Menu</h2>
+    <ul id="menu-items" data-testid="menu-items"></ul>
+  </section>
+
+  <section class="result" id="result-panel" hidden>
+    <p id="order-status" data-testid="order-status"></p>
+    <p id="order-message" data-testid="order-message"></p>
+    <p id="order-total" data-testid="order-total"></p>
+  </section>
+
+  <section class="columns">
+    <div>
+      <h2>Barista</h2>
+      <ul id="col-barista" data-testid="col-barista"></ul>
+    </div>
+    <div>
+      <h2>Kitchen</h2>
+      <ul id="col-kitchen" data-testid="col-kitchen"></ul>
+    </div>
+  </section>
+
+  <h2>Timeline</h2>
+  <ul id="timeline" data-testid="timeline"></ul>
+
+  <h2>Board</h2>
+  <ul id="board" data-testid="board"></ul>
+
+  <script src="app.js"></script>
+</body>
+</html>

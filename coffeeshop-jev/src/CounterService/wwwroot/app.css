@@ -1,0 +1,81 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 720px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #222;
+}
+
+h1 {
+  margin-bottom: 1rem;
+}
+
+.order-box,
+#ask-panel {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+/* #ask-panel (an ID selector) beats the browser's own [hidden] { display: none }
+   (an attribute selector - lower specificity), so the rule above alone leaves the ask box
+   visible even with the hidden attribute set. This re-asserts hidden at equal-or-higher
+   specificity so JS toggling the attribute actually hides it. */
+#ask-panel[hidden] {
+  display: none;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  background: #fde2e2;
+  border: 1px solid #d33;
+  color: #900;
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.result {
+  background: #eef7ee;
+  border: 1px solid #4a4;
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.columns {
+  display: flex;
+  gap: 2rem;
+}
+
+.columns > div {
+  flex: 1;
+}
+
+.steps {
+  margin: 0.25rem 0 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+#timeline li,
+#board li {
+  font-size: 0.9rem;
+  color: #555;
+}
