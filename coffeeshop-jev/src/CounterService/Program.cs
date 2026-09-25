@@ -26,7 +26,7 @@ builder.Services.AddOpenAiChatClient();
 builder.Services.AddOrderAgents();
 
 builder.Services.AddJevClient(
-    builder.Configuration["services:openjev:http:0"] ?? builder.Configuration["Jev:BaseUrl"] ?? "http://openjev",
+    builder.Configuration["Jev:BaseUrl"] ?? builder.Configuration["services:openjev:http:0"] ?? "http://openjev",
     options =>
     {
         options.ApiKey = builder.Configuration["Jev:ApiKey"];

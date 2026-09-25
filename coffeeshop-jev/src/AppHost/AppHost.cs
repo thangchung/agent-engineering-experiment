@@ -34,6 +34,7 @@ builder.AddProject<Projects.CounterService>("counter")
     .WithReference(catalog)
     .WaitFor(catalog) // research.md B23: the menu must exist before the first order
     .WithReference(openjev) // no WaitFor: the external service may be down, G4 handles it
+    .WithEnvironment("Jev__BaseUrl", openjevUrl)
     .WithEnvironment("Jev__ApiKey", jevApiKey)
     .WithEnvironment("OPENAI_BASE_URL", openAiBaseUrl)
     .WithEnvironment("OPENAI_API_KEY", openAiApiKey)

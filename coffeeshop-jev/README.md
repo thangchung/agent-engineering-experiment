@@ -106,13 +106,13 @@ sequenceDiagram
 
 ```bash
 cd src/AppHost
-dotnet user-secrets set "openjev-url" "http://<your-openjev-host>:<port>"
+dotnet user-secrets set "openjev-url" "http://<your-openjev-lan-host>:<port>"
 dotnet user-secrets set "openai-base-url" "https://<your-endpoint>/v1"
 dotnet user-secrets set "openai-model" "<model-name>"
 dotnet user-secrets set "openai-api-key" "<key>"
 ```
 
-`AppHost` reads these via `Parameters:*` (see `AppHost.cs`). Local-only, never committed — don't put them in `appsettings.json`.
+`openjev-url` is the OpenJev server's base URL; the client appends `/v1/systemone`. Use the LAN URL above for your local OpenJev server, or set it to `https://api.typesafe.ai` to use hosted Jev. `AppHost` passes this exact URL to CounterService, including its scheme, so both HTTP and HTTPS work. Change the same setting to switch endpoints; AppHost reads it via `Parameters:*` (see `AppHost.cs`). Keep API keys in user-secrets, not in committed settings files.
 
 ## Run + debug (Aspire)
 
@@ -154,3 +154,43 @@ dotnet test tests/CoffeeShop.Evals --filter "FullyQualifiedName~CoffeeShop.Evals
 Report: `tests/CoffeeShop.Evals/bin/Debug/net10.0/evals/out/report.md` (gate/station accuracy, JevJudge accept/escalate/human-review counts per rubric item). Variance detail: `evals/out/judge-variance.md`.
 
 Design + what's implemented vs. descoped: `research.md` §10 (esp. §10.6a, §10.9).
+
+## Executor wiring (as built, `OrderWorkflow.Build`)
+
+`src/CounterService/Features/Orders/Workflow/OrderWorkflow.cs` wires 8 `Executor` classes with `WorkflowBuilder`. This reflects the actual code (class names, message types), not the `research.md` §5.2 design sketch — two differences: the split step's real class is `SplitExecutor` (not `StationSplitExecutor`), and a `MenuRequested`/`ShowMenuExecutor` branch (ask-for-menu, no LLM/Jev call) exists in code but wasn't in the original design.
+
+```mermaid
+flowchart TD
+    IN(["order text / human answer"]) --> G["GateExecutor<br/>1 Jev call: intent + on_menu"]
+
+    G -- "Accepted" --> X["ExtractExecutor<br/>CounterAgent -> OrderDraft"]
+    G -- "Unclear" --> CL["ClarifyExecutor<br/>CounterAgent writes question"]
+    G -- "MenuRequested" --> SM["ShowMenuExecutor<br/>no LLM/Jev"]
+    G -- "default (Rejected)" --> RP["ReplyExecutor"]
+
+    X -- "OrderDraft" --> SP["SplitExecutor<br/>1 Jev call per line: station_i"]
+    X -- "default (Unclear)" --> CL
+
+    CL -- "ClarifyRequest" --> ASK{{"RequestPort<br/>ask-customer"}}
+    ASK -- "human text" --> G
+
+    SP -- "fan-out SplitOrder" --> BA["StationExecutor(Barista)<br/>BaristaAgent"]
+    SP -- "fan-out SplitOrder" --> KI["StationExecutor(Kitchen)<br/>KitchenAgent"]
+
+    BA -- "StationTicket" --> DL["DeliverExecutor<br/>fan-in barrier (2 tickets)<br/>+ CounterAgent reply"]
+    KI -- "StationTicket" --> DL
+
+    DL --> OUT(["output: OrderResult"])
+    RP --> OUT
+    SM --> OUT2(["output: MenuResponse"])
+
+    style ASK fill:#333,color:#fff
+```
+
+Notes tied to the code:
+- `AddSwitch(gate, ...)` routes on message *type* (`Accepted` / `Unclear` / `MenuRequested`), falling through to `[reply]` for anything else (`Rejected`) — `OrderWorkflow.cs:41-45`.
+- `extract` and `clarify` share one loop: `ExtractExecutor` falls back to `Unclear` when no valid lines parse, which lands back on `ClarifyExecutor` → `ask` → `gate` again (`OrderWorkflow.cs:46-50`).
+- `barista` and `kitchen` are two instances of the same `StationExecutor` class, parameterized by `Station` + `AIAgent` + executor id (`AgentKeys.Barista` / `AgentKeys.Kitchen`) — not two separate classes.
+- `AddFanInBarrierEdge` only releases `DeliverExecutor` once **both** stations have sent a `StationTicket`; `StationExecutor` always returns one (real, fallback, or `StationTicket.Empty`) even when it has no lines for that station — otherwise the barrier would hang forever (`StationExecutor.cs:24-26`).
+- `DeliverExecutor` reaches across executors via `SplitExecutor.SplitLinesKey`, reading the priced lines `SplitExecutor` wrote into shared per-order state, since the `StationTicket` it receives on the barrier edge carries no price (`DeliverExecutor.cs:32`, `SplitExecutor.cs:16,39`).
+- `WithOutputFrom(deliver, reply, showMenu)` — these 3 are the only executors that terminate a run; every other executor always sends onward.
