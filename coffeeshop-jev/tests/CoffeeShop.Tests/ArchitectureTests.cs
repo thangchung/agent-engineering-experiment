@@ -1,6 +1,6 @@
 using System.Reflection;
 using CounterService.Domain;
-using Jev.Client;
+using DecisionModel.Client;
 
 namespace CoffeeShop.Tests;
 
@@ -39,10 +39,10 @@ public class ArchitectureTests
     }
 
     [Fact]
-    public void JevClientAssembly_ReferencesNoCoffeeShopAssembly()
+    public void DecisionModelClientAssembly_ReferencesNoCoffeeShopAssembly()
     {
-        var jevAssembly = typeof(JevClient).Assembly;
-        var offenders = jevAssembly.GetReferencedAssemblies()
+        var decisionModelAssembly = typeof(DecisionModelClient).Assembly;
+        var offenders = decisionModelAssembly.GetReferencedAssemblies()
             .Where(a => a.Name is not null && (a.Name.StartsWith("CoffeeShop", StringComparison.Ordinal) || a.Name is "CounterService" or "ProductCatalogService"))
             .Select(a => a.Name)
             .ToList();

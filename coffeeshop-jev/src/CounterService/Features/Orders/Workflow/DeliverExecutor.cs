@@ -41,6 +41,7 @@ public sealed class DeliverExecutor(AIAgent counterAgent) : Executor<StationTick
         var result = new OrderResult
         {
             Status = OrderStatus.Completed,
+            Lines = lines,
             Tickets = tickets,
             Total = total,
             Message = response.Text,

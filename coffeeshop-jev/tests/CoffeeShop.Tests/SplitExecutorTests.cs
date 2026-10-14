@@ -4,18 +4,18 @@ using System.Text.Json.Nodes;
 using CoffeeShop.Tests.Fakes;
 using CounterService.Domain;
 using CounterService.Features.Orders.Workflow;
-using Jev.Client;
+using DecisionModel.Client;
 
 namespace CoffeeShop.Tests;
 
-/// <summary>tasks.md T11: SplitExecutor, offline against a stub Jev HttpMessageHandler.</summary>
+/// <summary>tasks.md T11: SplitExecutor, offline against a stub DecisionModel HttpMessageHandler.</summary>
 public class SplitExecutorTests
 {
     [Fact]
-    public async Task HandleAsync_TwoLines_SendsOneJevCall_WithBothStationQuestions()
+    public async Task HandleAsync_TwoLines_SendsOneDecisionModelCall_WithBothStationQuestions()
     {
         JsonNode? capturedBody = null;
-        var jev = NewJevClient(async request =>
+        var decisionModel = NewDecisionModelClient(async request =>
         {
             var text = await request.Content!.ReadAsStringAsync();
             capturedBody = JsonNode.Parse(text);
@@ -23,7 +23,7 @@ public class SplitExecutorTests
         });
 
         var draft = new OrderDraft([Line("LATTE"), Line("MUFFIN")]);
-        await new SplitExecutor(jev).HandleAsync(draft, new NoopWorkflowContext());
+        await new SplitExecutor(decisionModel).HandleAsync(draft, new NoopWorkflowContext());
 
         var questions = capturedBody!["questions"]!.AsObject();
         Assert.True(questions.ContainsKey("station_0"));
@@ -34,10 +34,10 @@ public class SplitExecutorTests
     [Fact]
     public async Task HandleAsync_HighAndMidConfidence_MapToExpectedStationsAndFlags()
     {
-        var jev = NewJevClient(CannedStationResponse(("barista", 0.95), ("kitchen", 0.7)));
+        var decisionModel = NewDecisionModelClient(CannedStationResponse(("barista", 0.95), ("kitchen", 0.7)));
         var draft = new OrderDraft([Line("LATTE"), Line("MUFFIN")]);
 
-        var split = await new SplitExecutor(jev).HandleAsync(draft, new NoopWorkflowContext());
+        var split = await new SplitExecutor(decisionModel).HandleAsync(draft, new NoopWorkflowContext());
 
         Assert.Equal(Station.Barista, split.Lines[0].Station);
         Assert.Equal(Flag.None, split.Lines[0].Flag);
@@ -46,15 +46,15 @@ public class SplitExecutorTests
     }
 
     [Fact]
-    public async Task HandleAsync_JevDown_EveryLineGoesToKitchenReview_SplitOrderStillSent()
+    public async Task HandleAsync_DecisionModelDown_EveryLineGoesToKitchenReview_SplitOrderStillSent()
     {
-        var jev = NewJevClient(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        var decisionModel = NewDecisionModelClient(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
         {
             Content = new StringContent("""{"detail":"boom"}""", Encoding.UTF8, "application/json"),
         }));
 
         var draft = new OrderDraft([Line("LATTE"), Line("MUFFIN")]);
-        var split = await new SplitExecutor(jev).HandleAsync(draft, new NoopWorkflowContext());
+        var split = await new SplitExecutor(decisionModel).HandleAsync(draft, new NoopWorkflowContext());
 
         Assert.All(split.Lines, l =>
         {
@@ -85,11 +85,11 @@ public class SplitExecutorTests
         return body.ToJsonString();
     }
 
-    private static JevClient NewJevClient(string cannedJson) =>
-        NewJevClient(_ => Task.FromResult(JsonHttpResponse(cannedJson)));
+    private static DecisionModelClient NewDecisionModelClient(string cannedJson) =>
+        NewDecisionModelClient(_ => Task.FromResult(JsonHttpResponse(cannedJson)));
 
-    private static JevClient NewJevClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) =>
-        new(new HttpClient(new StubHandler(respond)) { BaseAddress = new Uri("http://openjev.local/") }, new JevOptions());
+    private static DecisionModelClient NewDecisionModelClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) =>
+        new(new HttpClient(new StubHandler(respond)) { BaseAddress = new Uri("http://openjev.local/") }, new DecisionModelOptions());
 
     private static HttpResponseMessage JsonHttpResponse(string body) => new(HttpStatusCode.OK)
     {

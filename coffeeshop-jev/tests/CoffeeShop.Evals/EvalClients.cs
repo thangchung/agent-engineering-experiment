@@ -1,6 +1,6 @@
 using System.ClientModel;
 using CounterService.Features.Orders.Agents;
-using Jev.Client;
+using DecisionModel.Client;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAI;
@@ -12,10 +12,10 @@ namespace CoffeeShop.Evals;
 /// resolved, for the live eval tests (each starts with an `EvalConfig.Require*()` call).</summary>
 public static class EvalClients
 {
-    public static JevClient Jev() =>
+    public static DecisionModelClient DecisionModel() =>
         new(
-            new HttpClient { BaseAddress = new Uri(EvalConfig.OpenJevUrl!.TrimEnd('/') + "/") },
-            new JevOptions { ApiKey = EvalConfig.JevApiKey });
+            new HttpClient { BaseAddress = new Uri(EvalConfig.DecisionModelUrl!.TrimEnd('/') + "/") },
+            new DecisionModelOptions { ApiKey = EvalConfig.DecisionModelApiKey });
 
     public static IChatClient ChatClient()
     {

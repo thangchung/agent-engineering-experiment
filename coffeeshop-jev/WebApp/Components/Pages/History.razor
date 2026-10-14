@@ -1,0 +1,112 @@
+@page "/orders"
+@inject OrderSession Session
+
+<PageTitle>Your orders · The Counter</PageTitle>
+
+<section class="view-orders" aria-labelledby="orders-h">
+    <div class="orders-head">
+        <h1 id="orders-h">@(_mine ? "Your orders" : "Everyone's orders today")</h1>
+        <div class="seg" role="radiogroup" aria-label="Whose orders">
+            <button type="button" role="radio" aria-checked="@_mine.ToString().ToLowerInvariant()" data-testid="scope-mine" @onclick="() => SetScope(true)">Mine</button>
+            <button type="button" role="radio" aria-checked="@((!_mine).ToString().ToLowerInvariant())" data-testid="scope-all" @onclick="() => SetScope(false)">Everyone today</button>
+        </div>
+    </div>
+    <div class="filters" role="group" aria-label="Status">
+        @foreach (var (value, label) in Statuses)
+        {
+            <button type="button" class="chip @(_status == value ? "on" : "")" data-testid="filter-@value" @onclick="() => _status = value">@label</button>
+        }
+    </div>
+
+    @if (_orders is null)
+    {
+        <p class="empty">@(_failed ? "Orders are unavailable right now." : "Loading…")</p>
+    }
+    else if (Shown.Count == 0)
+    {
+        <div class="empty" data-testid="history-empty">
+            <p>@(_mine && _status == "all" ? "You haven't ordered anything yet." : "No orders match this filter.")</p>
+            <a class="btn primary" href="menu">Browse the menu</a>
+        </div>
+    }
+    else
+    {
+        <ol class="slips" data-testid="history-list">
+            @foreach (var o in Shown)
+            {
+                var ok = o.Result.Status == "Completed";
+                <li class="slip @(ok ? "completed" : "rejected")" data-testid="history-row">
+                    <div class="slip-top"><a class="slip-no" href="orders/@o.Number" data-testid="order-link">#@o.Number</a><span class="status @o.Result.Status">@(ok ? "Completed" : "Not placed")</span></div>
+                    <p class="slip-time">@o.CreatedAt.LocalDateTime.ToString("ddd HH:mm")@if (!_mine) {<span class="slip-who"> @(o.CustomerId == Session.CustomerId ? "you" : o.CustomerId ?? "walk-in")</span>}</p>
+                    <div class="slip-lines">
+                        @if (o.Result.Lines.Count > 0)
+                        {
+                            @foreach (var l in o.Result.Lines)
+                            {
+                                <div class="line"><span>@l.Qty × @Session.Display(l.Name)@if (l.Flag is "Confirm" or "Review") {<span class="flag @l.Flag.ToLowerInvariant()">@l.Flag</span>}</span><span>@Money.Format(l.Price * l.Qty)</span></div>
+                            }
+                            <div class="total"><span>Total</span><span>@Money.Format(o.Result.Total)</span></div>
+                        }
+                        else
+                        {
+                            <div class="line"><small>@(string.IsNullOrEmpty(o.Result.Message) ? "No items" : o.Result.Message)</small></div>
+                        }
+                    </div>
+                    <a class="card-link slip-more" href="orders/@o.Number" data-testid="order-details-link">Order details, audit log and AG-UI events</a>
+                    <details>
+                        <summary>How the counter handled it</summary>
+                        <p>@(o.Result.Reason is { } r ? Reasons.GetValueOrDefault(r, r) : "Lines checked against the menu; prices from the catalog.")</p>
+                    </details>
+                </li>
+            }
+        </ol>
+    }
+</section>
+
+@code {
+    private static readonly (string Value, string Label)[] Statuses = [("all", "All"), ("Completed", "Completed"), ("Rejected", "Not placed")];
+
+    private static readonly Dictionary<string, string> Reasons = new()
+    {
+        ["OffTopic"] = "Not a food or drink order.",
+        ["AskCap"] = "Stopped after two questions.",
+        ["DecisionModelDown"] = "Ordering was offline.",
+        ["Blocked"] = "Blocked by a guard.",
+        ["Cancelled"] = "Cancelled.",
+    };
+
+    private List<OrderRecordInfo>? _orders;
+    private bool _mine = true;
+    private bool _failed;
+    private string _status = "all";
+
+    private List<OrderRecordInfo> Shown => (_orders ?? [])
+        .Where(o => _status == "all" || o.Result.Status == _status)
+        .Where(o => _mine || o.CreatedAt.LocalDateTime.Date == DateTime.Today)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.GetMenuAsync();
+        await LoadAsync();
+    }
+
+    private async Task SetScope(bool mine)
+    {
+        _mine = mine;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _orders = await Session.GetOrdersAsync(_mine);
+            _failed = false;
+        }
+        catch (HttpRequestException)
+        {
+            _failed = true;
+        }
+    }
+}

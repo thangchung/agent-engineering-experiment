@@ -11,6 +11,8 @@ public sealed record OrderResult
 {
     public required OrderStatus Status { get; init; }
 
+    public IReadOnlyList<OrderLine> Lines { get; init; } = [];
+
     public IReadOnlyList<StationTicket> Tickets { get; init; } = [];
 
     public decimal Total { get; init; }

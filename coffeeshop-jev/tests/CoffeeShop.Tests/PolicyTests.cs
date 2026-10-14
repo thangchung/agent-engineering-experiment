@@ -45,6 +45,39 @@ public class PolicyTests
         Assert.IsType<MenuRequested>(result);
     }
 
+    [Theory]
+    [InlineData(0.72, 0.08, 0.33, 0.00, "place_order")]    // "2 lattes and a croissant"
+    [InlineData(0.23, 0.72, 0.52, 0.66, "ask_menu")]       // "what do you have?"
+    [InlineData(0.27, 0.69, 0.15, 0.72, "ask_menu")]       // "show me the menu"
+    [InlineData(0.09, 0.13, 0.85, 0.05, "order_history")]  // "what did I order before?"
+    [InlineData(0.70, 0.07, 0.71, 0.91, "place_order")]    // cart text: past 0.71 stays under 0.8, off-topic is only a fallback
+    [InlineData(0.60, 0.00, 0.24, 0.01, "place_order")]    // cart text "2 × Latte, 1 × Muffin"
+    [InlineData(0.53, 0.00, 0.19, 0.00, "place_order")]    // "2 Latte, 1 Muffin"
+    [InlineData(0.81, 0.54, 0.12, 0.20, "place_order")]    // menu 0.54 stays under 0.6
+    [InlineData(0.00, 0.00, 0.07, 0.85, "off_topic")]      // "what's the weather today?"
+    [InlineData(0.14, 0.10, 0.09, 0.12, "other")]          // "hmm"
+    public void FromNouls_MeasuredLayaScores_PickTheRightIntent(double orders, double menu, double past, double offTopic, string expected)
+    {
+        var (choice, confidence) = IntentPolicy.FromNouls(orders, menu, past, offTopic);
+
+        Assert.Equal(expected, choice);
+        Assert.Equal(expected == "other", confidence == 0);
+    }
+
+    [Fact]
+    public void FromNouls_OtherHasZeroConfidence_SoDecideAsksInsteadOfRefusing()
+    {
+        var (choice, confidence) = IntentPolicy.FromNouls(0.14, 0.10, 0.09, 0.12);
+
+        Assert.IsType<Unclear>(IntentPolicy.Decide(choice, confidence, 0.4, asks: 0, DecisionProfile.Laya));
+    }
+
+    [Fact]
+    public void Decide_OrderHistory_ReturnsHistoryRequested()
+    {
+        Assert.IsType<HistoryRequested>(IntentPolicy.Decide("order_history", 0.9, 0.5, asks: 0));
+    }
+
     [Fact]
     public void Decide_OffTopic_ReturnsRejectedOffTopic()
     {

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- Components.AI preview packages: NU1510/NU1605 come from the .NET 11 shared-framework workaround below -->
+    <NoWarn>$(NoWarn);NU1510;NU1605;EXTEXP0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.AI" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" ExcludeAssets="all" />
+    <PackageReference Include="AGUI.Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\ServiceDefaults\ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

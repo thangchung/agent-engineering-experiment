@@ -73,12 +73,12 @@ public class DeliverAndReplyExecutorTests
         var reply = new ReplyExecutor();
         var context = new NoopWorkflowContext();
 
-        await reply.HandleAsync(new Rejected(RejectReason.JevDown, "We can't take orders right now, please try again in a moment."), context);
+        await reply.HandleAsync(new Rejected(RejectReason.DecisionModelDown, "We can't take orders right now, please try again in a moment."), context);
 
         Assert.Contains(context.Events, e => e is AgentResponseEvent);
         var result = Assert.IsType<OrderResult>(Assert.Single(context.Outputs));
         Assert.Equal(OrderStatus.Rejected, result.Status);
-        Assert.Equal(RejectReason.JevDown, result.Reason);
+        Assert.Equal(RejectReason.DecisionModelDown, result.Reason);
         Assert.Contains("can't take orders", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -2,7 +2,7 @@ using CoffeeShop.Tests.Fakes;
 using CounterService.Domain;
 using CounterService.Features.Orders.Agents;
 using CounterService.Features.Orders.Workflow;
-using Jev.Client;
+using DecisionModel.Client;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 
@@ -21,12 +21,12 @@ public class WorkflowTests
     [Fact]
     public async Task HappyPath_LatteAndCroissant_CompletesInOrder()
     {
-        var handler = new ScriptedJevHandler([("place_order", 0.9, 0.95)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.95)]);
+        var decisionModel = NewDecisionModel(handler);
         var counter = CounterFake("""{"lines":[{"name":"LATTE","qty":1},{"name":"CROISSANT","qty":1}]}""");
         var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
 
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent);
         var run = await InProcessExecution.RunAsync(workflow, "a latte and a croissant");
 
         var status = await run.GetStatusAsync();
@@ -47,12 +47,12 @@ public class WorkflowTests
     public async Task Clarify_OffMenuThenAnswer_CompletesWithOneAsk()
     {
         // 1st gate call: off-menu -> Unclear. 2nd gate call (after the human's answer): accepted.
-        var handler = new ScriptedJevHandler([("place_order", 0.9, 0.0), ("place_order", 0.9, 0.95)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.0), ("place_order", 0.9, 0.95)]);
+        var decisionModel = NewDecisionModel(handler);
         var counter = CounterFake("""{"lines":[{"name":"LATTE","qty":1}]}""");
         var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
 
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent);
         var run = await InProcessExecution.RunAsync(workflow, "a pizza");
 
         Assert.Equal(RunStatus.PendingRequests, await run.GetStatusAsync());
@@ -68,12 +68,12 @@ public class WorkflowTests
     [Fact]
     public async Task AskCap_ThreeUnclearTurns_RejectsAfterExactlyTwoAsks()
     {
-        var handler = new ScriptedJevHandler([("ask_menu", 0.1, 0.0), ("ask_menu", 0.1, 0.0), ("ask_menu", 0.1, 0.0)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("ask_menu", 0.1, 0.0), ("ask_menu", 0.1, 0.0), ("ask_menu", 0.1, 0.0)]);
+        var decisionModel = NewDecisionModel(handler);
         var counter = CounterFake("""{"lines":[]}""");
         var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
 
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent);
         var run = await InProcessExecution.RunAsync(workflow, "hmm");
 
         var asks = 0;
@@ -93,12 +93,12 @@ public class WorkflowTests
     [Fact]
     public async Task AskMenu_ReturnsMenuWithoutClarificationOrOrder()
     {
-        var handler = new ScriptedJevHandler([("ask_menu", 0.9, 0.0)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("ask_menu", 0.9, 0.0)]);
+        var decisionModel = NewDecisionModel(handler);
         var counter = CounterFake("""{"lines":[]}""");
         var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
 
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent);
         var run = await InProcessExecution.RunAsync(workflow, "show me the menu");
 
         var events = run.NewEvents.ToList();
@@ -111,14 +111,14 @@ public class WorkflowTests
     [Fact]
     public async Task DrinksOnly_CompletesQuickly_KitchenNeverCalled()
     {
-        var handler = new ScriptedJevHandler([("place_order", 0.9, 0.95)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.95)]);
+        var decisionModel = NewDecisionModel(handler);
         var kitchenFake = new FakeChatClient((_, _) => throw new InvalidOperationException("kitchen must not be called"));
         var counter = CounterFake("""{"lines":[{"name":"ESPRESSO_DOUBLE","qty":1}]}""");
         var (counterAgent, baristaAgent, _) = Agents(counter);
         var kitchenAgent = KitchenAgentFactory.Create(kitchenFake, enableSensitiveData: false);
 
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var run = await InProcessExecution.RunAsync(workflow, "one double espresso please");
@@ -135,11 +135,11 @@ public class WorkflowTests
     {
         Task<Run> RunOrderAsync(string text)
         {
-            var handler = new ScriptedJevHandler([("place_order", 0.9, 0.95)]);
-            var jev = NewJev(handler);
+            var handler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.95)]);
+            var decisionModel = NewDecisionModel(handler);
             var counter = CounterFake("""{"lines":[{"name":"LATTE","qty":1}]}""");
             var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
-            var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent); // separate Workflow per run (B1)
+            var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent); // separate Workflow per run (B1)
             return InProcessExecution.RunAsync(workflow, text).AsTask();
         }
 
@@ -164,11 +164,11 @@ public class WorkflowTests
     [Fact]
     public async Task OneSharedWorkflow_TwoConcurrentRuns_ThrowsAlreadyOwned()
     {
-        var handler = new ScriptedJevHandler([("place_order", 0.9, 0.95)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.95)]);
+        var decisionModel = NewDecisionModel(handler);
         var counter = CounterFake("""{"lines":[{"name":"LATTE","qty":1}]}""");
         var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent); // ONE instance, reused
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent); // ONE instance, reused
 
         await Assert.ThrowsAnyAsync<InvalidOperationException>(() =>
             Task.WhenAll(
@@ -179,11 +179,11 @@ public class WorkflowTests
     [Fact]
     public async Task Evaluate_HasSubResultsForEveryExecutor()
     {
-        var handler = new ScriptedJevHandler([("place_order", 0.9, 0.95)]);
-        var jev = NewJev(handler);
+        var handler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.95)]);
+        var decisionModel = NewDecisionModel(handler);
         var counter = CounterFake("""{"lines":[{"name":"LATTE","qty":1},{"name":"CROISSANT","qty":1}]}""");
         var (counterAgent, baristaAgent, kitchenAgent) = Agents(counter);
-        var workflow = OrderWorkflow.Build(jev, Menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, Menu, counterAgent, baristaAgent, kitchenAgent);
 
         var run = await InProcessExecution.RunAsync(workflow, "a latte and a croissant");
         var results = await run.EvaluateAsync(
@@ -197,8 +197,67 @@ public class WorkflowTests
         }
     }
 
-    private static JevClient NewJev(HttpMessageHandler handler) =>
-        new(new HttpClient(handler) { BaseAddress = new Uri("http://openjev.local/") }, new JevOptions());
+    [Fact]
+    public async Task OrderHistory_ReturnsOnlyThisCustomersOrdersNewestFirst()
+    {
+        var store = new CounterService.Features.Orders.Common.OrderStore();
+        var done = OrderResult.Rejected(RejectReason.OffTopic, "x");
+        store.Add(done, "alice");
+        store.Add(done, "bob");
+        store.Add(done, "alice");
+        var (counterAgent, baristaAgent, kitchenAgent) = Agents(CounterFake("""{"lines":[]}"""));
+
+        var workflow = OrderWorkflow.Build(NewDecisionModel(new ScriptedDecisionModelHandler([("order_history", 0.9, 0.5)])), Menu, counterAgent, baristaAgent, kitchenAgent,
+            customerId: "alice", store: store);
+        var run = await InProcessExecution.RunAsync(workflow, "what did I order before?");
+
+        var response = Assert.IsType<HistoryResponse>(run.NewEvents.ToList().Single(e => e.GetType() == typeof(WorkflowOutputEvent)).Data);
+        Assert.Equal([3, 1], response.Orders.Select(o => o.Number));
+    }
+
+    [Fact]
+    public async Task OrderHistory_NewCustomer_ReturnsEmpty()
+    {
+        var (counterAgent, baristaAgent, kitchenAgent) = Agents(CounterFake("""{"lines":[]}"""));
+
+        var workflow = OrderWorkflow.Build(NewDecisionModel(new ScriptedDecisionModelHandler([("order_history", 0.9, 0.5)])), Menu, counterAgent, baristaAgent, kitchenAgent,
+            customerId: "newbie", store: new CounterService.Features.Orders.Common.OrderStore());
+        var run = await InProcessExecution.RunAsync(workflow, "show my past orders");
+
+        var response = Assert.IsType<HistoryResponse>(run.NewEvents.ToList().Single(e => e.GetType() == typeof(WorkflowOutputEvent)).Data);
+        Assert.Empty(response.Orders);
+    }
+
+    [Fact]
+    public async Task TurnBoundary_Unclear_EndsRunWithClarifyRequestAsOutput()
+    {
+        var (counterAgent, baristaAgent, kitchenAgent) = Agents(CounterFake("""{"lines":[]}"""));
+
+        var workflow = OrderWorkflow.Build(NewDecisionModel(new ScriptedDecisionModelHandler([("place_order", 0.9, 0.0)])), Menu, counterAgent, baristaAgent, kitchenAgent,
+            turnBoundary: true);
+        var run = await InProcessExecution.RunAsync(workflow, "a pizza");
+
+        Assert.NotEqual(RunStatus.PendingRequests, await run.GetStatusAsync());
+        var events = run.NewEvents.ToList();
+        Assert.IsType<ClarifyRequest>(events.Single(e => e.GetType() == typeof(WorkflowOutputEvent)).Data);
+        Assert.DoesNotContain(events, e => e is RequestInfoEvent);
+    }
+
+    [Fact]
+    public async Task TurnBoundary_SeededWithTwoAsks_RejectsAskCap()
+    {
+        var (counterAgent, baristaAgent, kitchenAgent) = Agents(CounterFake("""{"lines":[]}"""));
+
+        var workflow = OrderWorkflow.Build(NewDecisionModel(new ScriptedDecisionModelHandler([("ask_menu", 0.1, 0.0)])), Menu, counterAgent, baristaAgent, kitchenAgent,
+            seed: new OrderState(["a pizza", "hmm"], 2), turnBoundary: true);
+        var run = await InProcessExecution.RunAsync(workflow, "still hmm");
+
+        var output = FindOrderResult(run.NewEvents.ToList());
+        Assert.Equal(RejectReason.AskCap, output.Reason);
+    }
+
+    private static DecisionModelClient NewDecisionModel(HttpMessageHandler handler) =>
+        new(new HttpClient(handler) { BaseAddress = new Uri("http://openjev.local/") }, new DecisionModelOptions());
 
     private static FakeChatClient CounterFake(string extractJson, string clarifyText = "Sorry, could you say that again?", string deliverText = "Thanks, your order is on its way!") =>
         new((messages, _) =>

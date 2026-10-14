@@ -12,8 +12,8 @@ public enum RejectReason
     /// <summary>The clarify loop ran out of asks (research.md §4.1, MaxAsks).</summary>
     AskCap,
 
-    /// <summary>Jev was unreachable or errored (research.md G4, fail-closed at the gate).</summary>
-    JevDown,
+    /// <summary>DecisionModel was unreachable or errored (research.md G4, fail-closed at the gate).</summary>
+    DecisionModelDown,
 
     /// <summary>The customer asked to cancel (research.md §12 U4).</summary>
     Cancelled,

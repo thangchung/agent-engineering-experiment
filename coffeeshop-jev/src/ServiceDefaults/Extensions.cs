@@ -31,7 +31,7 @@ public static class Extensions
             // research.md B11: the OpenAI SDK already retries on its own, and a chat call can run
             // longer than the standard handler's attempt timeout, so stacking retries on retries
             // multiplies GPU/LLM generations instead of saving them. No resilience handler here by
-            // default - add it explicitly per client (Jev.Client does, the OpenAI chat client does not).
+            // default - add it explicitly per client (DecisionModel.Client does, the OpenAI chat client does not).
 
             // Turn on service discovery by default.
             http.AddServiceDiscovery();
@@ -70,7 +70,7 @@ public static class Extensions
                         "CoffeeShop.Agents",
                         "Experimental.ModelContextProtocol",
                         "CoffeeShop.Counter",
-                        "Jev.Client")
+                        "DecisionModel.Client")
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Exclude health check requests from tracing
                         tracing.Filter = context =>

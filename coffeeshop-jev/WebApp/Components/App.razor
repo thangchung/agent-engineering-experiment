@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <title>CoffeeShop Counter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="@Assets["_content/Microsoft.AspNetCore.Components.AI/ai-chat.css"]" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <script>
+        try { const t = JSON.parse(localStorage.getItem("cs.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+    </script>
+    <ImportMap />
+    <HeadOutlet @rendermode="NoPrerender" />
+</head>
+<body>
+    <Routes @rendermode="NoPrerender" />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["app.js"]"></script>
+</body>
+</html>
+
+@code {
+    private static readonly IComponentRenderMode NoPrerender = new InteractiveServerRenderMode(prerender: false);
+}

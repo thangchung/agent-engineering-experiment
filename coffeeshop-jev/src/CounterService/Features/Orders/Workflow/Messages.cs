@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CounterService.Domain;
+using CounterService.Features.Orders.Common;
 
 namespace CounterService.Features.Orders.Workflow;
 
@@ -28,6 +29,10 @@ public sealed record Rejected(RejectReason Reason, string Message)
 public sealed record MenuRequested;
 
 public sealed record MenuResponse(IReadOnlyList<MenuItem> Items);
+
+public sealed record HistoryRequested;
+
+public sealed record HistoryResponse(IReadOnlyList<OrderRecord> Orders);
 
 /// <summary>A question for the human, carried through the <c>RequestPort</c> (research.md §5.4).</summary>
 public sealed record ClarifyRequest(string Question, IReadOnlyList<string> Menu)

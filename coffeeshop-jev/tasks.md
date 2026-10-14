@@ -17,7 +17,7 @@ A task is **done** only when all of the following pass and the output is pasted 
 dotnet build CoffeeShop.slnx -warnaserror                         # 0 warnings, 0 errors
 dotnet format CoffeeShop.slnx --verify-no-changes                 # style + analyzers clean
 dotnet test tests/CoffeeShop.Tests                                # offline, all green
-node --check src/CounterService/wwwroot/app.js                    # JS syntax lint (UI tasks only)
+dotnet build WebApp -warnaserror                                  # UI tasks only (T19 wwwroot was replaced by WebApp, see WEBAPP_PROGRESS.md)
 # + the task's own AC commands below (playwright-cli / live evals)
 ```
 Live checks (`[LIVE]`) need the LAN OpenJev plus an OpenAI-compatible chat endpoint, either as env

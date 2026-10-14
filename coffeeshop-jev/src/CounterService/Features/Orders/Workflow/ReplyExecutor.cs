@@ -1,4 +1,5 @@
 using CounterService.Domain;
+using CounterService.Features.Orders.Common;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
@@ -30,4 +31,22 @@ public sealed class ReplyExecutor() : Executor<Rejected>("reply")
             cancellationToken).ConfigureAwait(false);
         await context.YieldOutputAsync(result, cancellationToken).ConfigureAwait(false);
     }
+}
+
+[YieldsOutput(typeof(HistoryResponse))]
+public sealed class ShowHistoryExecutor(OrderStore? store, string? customerId) : Executor<HistoryRequested>("show-history")
+{
+    public override async ValueTask HandleAsync(HistoryRequested message, IWorkflowContext context, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<OrderRecord> orders = store is null || string.IsNullOrEmpty(customerId) ? [] : store.ListByCustomer(customerId);
+        await context.YieldOutputAsync(new HistoryResponse(orders), cancellationToken).ConfigureAwait(false);
+    }
+}
+
+/// <summary>Turn-boundary clarify (research.md §17.3): the question is the run's output, the answer arrives as the next run.</summary>
+[YieldsOutput(typeof(ClarifyRequest))]
+public sealed class AskOutputExecutor() : Executor<ClarifyRequest>("ask-output")
+{
+    public override async ValueTask HandleAsync(ClarifyRequest message, IWorkflowContext context, CancellationToken cancellationToken = default) =>
+        await context.YieldOutputAsync(message, cancellationToken).ConfigureAwait(false);
 }

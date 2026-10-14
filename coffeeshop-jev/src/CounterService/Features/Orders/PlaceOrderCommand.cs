@@ -7,7 +7,7 @@ using CounterService.Domain;
 using CounterService.Features.Orders.Agents;
 using CounterService.Features.Orders.Common;
 using CounterService.Features.Orders.Workflow;
-using Jev.Client;
+using DecisionModel.Client;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,13 +35,14 @@ public static class PlaceOrderCommand
 
     private static IResult Handle(
         PlaceOrderRequest request,
-        JevClient jev,
+        DecisionModelClient decisionModel,
         ICatalogClient catalog,
         [FromKeyedServices(AgentKeys.Counter)] AIAgent counterAgent,
         [FromKeyedServices(AgentKeys.Barista)] AIAgent baristaAgent,
         [FromKeyedServices(AgentKeys.Kitchen)] AIAgent kitchenAgent,
         RunRegistry runs,
         OrderStore store,
+        DecisionProfile profile,
         HttpContext http)
     {
         if (string.IsNullOrWhiteSpace(request.Text) || request.Text.Length > MaxTextLength)
@@ -49,19 +50,20 @@ public static class PlaceOrderCommand
             return Results.BadRequest(new { error = "text must be 1-500 characters" });
         }
 
-        var stream = StreamAsync(request.Text, jev, catalog, counterAgent, baristaAgent, kitchenAgent, runs, store, http.RequestAborted);
+        var stream = StreamAsync(request.Text, decisionModel, catalog, counterAgent, baristaAgent, kitchenAgent, runs, store, profile, http.RequestAborted);
         return TypedResults.ServerSentEvents(stream);
     }
 
     private static async IAsyncEnumerable<SseItem<string>> StreamAsync(
         string text,
-        JevClient jev,
+        DecisionModelClient decisionModel,
         ICatalogClient catalog,
         AIAgent counterAgent,
         AIAgent baristaAgent,
         AIAgent kitchenAgent,
         RunRegistry runs,
         OrderStore store,
+        DecisionProfile profile,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var runId = runs.Register();
@@ -85,7 +87,7 @@ public static class PlaceOrderCommand
             yield break;
         }
 
-        var workflow = OrderWorkflow.Build(jev, menu, counterAgent, baristaAgent, kitchenAgent);
+        var workflow = OrderWorkflow.Build(decisionModel, menu, counterAgent, baristaAgent, kitchenAgent, profile: profile);
 
         StreamingRun? run = null;
         var errorSent = false;

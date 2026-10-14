@@ -1,0 +1,89 @@
+@page "/"
+@inject OrderSession Session
+@implements IDisposable
+
+<PageTitle>Order · The Counter</PageTitle>
+
+<section class="view-order" aria-labelledby="order-h">
+    <h1 id="order-h" class="sr-only">Order</h1>
+
+    <div class="chat sc-ai-root sc-ai-chat-page">
+        <div class="sc-ai-chat-page__body">
+            <MessageList>
+                <EmptyContent>
+                    <div class="welcome">
+                        <h2>What can we get started for you?</h2>
+                        <p>Order the way you'd say it at the counter. Ask for the menu, or for what you ordered last time.</p>
+                    </div>
+                </EmptyContent>
+                <ChildContent>
+                    <BlockRenderer TBlock="ShowMenuBlock" Context="b">
+                        @if (b.Items is { } items) { <MenuCard Items="items" /> }
+                    </BlockRenderer>
+                    <BlockRenderer TBlock="ShowHistoryBlock" Context="b">
+                        @if (b.Orders is { } orders) { <HistoryCard Orders="orders" /> }
+                    </BlockRenderer>
+                    <BlockRenderer TBlock="FunctionInvocationContentBlock" When="@(b => b.ToolName == "order_progress")"><span hidden></span></BlockRenderer>
+                </ChildContent>
+            </MessageList>
+        </div>
+
+        <div class="suggest" aria-label="Try one" data-testid="suggestions">
+            @foreach (var say in Suggestions)
+            {
+                <button type="button" disabled="@(Ctx.Status == ConversationStatus.Streaming)" @onclick="() => Ctx.SendMessageAsync(say)">@say</button>
+            }
+        </div>
+
+        <div class="sc-ai-chat-page__footer" data-testid="order-form">
+            <MessageInput Placeholder="Tell the counter what you'd like" />
+        </div>
+        <p class="hint" data-testid="hint">@(Session.Agent.State.Value.Status == "Asking" ? "Answer in your next message. The counter keeps the conversation so far." : "")</p>
+    </div>
+
+    <aside class="rail" aria-label="Current order">
+        <TicketRail Agent="Session.Agent" />
+    </aside>
+</section>
+
+@code {
+    private static readonly string[] Suggestions =
+    [
+        "2 lattes and a croissant",
+        "something sweet",
+        "a latte and a pizza",
+        "what do you have?",
+        "what did I order before?",
+        "what's the weather today?",
+    ];
+
+    private IDisposable? _turns;
+    private IDisposable? _status;
+    private IDisposable? _state;
+
+    [CascadingParameter]
+    public AgentContext Ctx { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        _turns = Ctx.RegisterOnTurnAdded(turn => { _ = InvokeAsync(StateHasChanged); });
+        _status = Ctx.RegisterOnStatusChanged(status => { _ = InvokeAsync(StateHasChanged); });
+        _state = Session.Agent.State.OnChanged(() => _ = InvokeAsync(StateHasChanged));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Session.JsAsync<object>("cs.limitInput", 500);
+            await Session.JsAsync<object>("cs.focusInput");
+        }
+    }
+
+    public void Dispose()
+    {
+        _turns?.Dispose();
+        _status?.Dispose();
+        _state?.Dispose();
+    }
+}

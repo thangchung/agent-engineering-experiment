@@ -23,17 +23,17 @@ public class Report
     {
         var dir = Path.Combine(AppContext.BaseDirectory, "evals", "out");
         var sb = new StringBuilder();
-        sb.AppendLine("# CoffeeShop.Jev eval report");
+        sb.AppendLine("# CoffeeShop.DecisionModel eval report");
         sb.AppendLine();
         sb.AppendLine($"Generated {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss} UTC.");
         sb.AppendLine();
 
         AppendSection<GateEvalRow>(sb, dir, "gate.jsonl", "Gate (L1) - research.md §4.1, R-G1/R-G2/R-G3",
-            "run `GateEvals` with `OPENJEV_URL` set first", AppendGateSection);
+            "run `GateEvals` with `DECISION_MODEL_URL` set first", AppendGateSection);
         AppendSection<StationEvalRow>(sb, dir, "station.jsonl", "Split / station (L1) - research.md §4.2, R-S1/R-S2/R-S3",
-            "run `StationEvals` with `OPENJEV_URL` set first", AppendStationSection);
-        AppendSection<JudgeVerdict>(sb, dir, "judge.jsonl", "JevJudge accept/escalate cascade (research.md §10.6a)",
-            "run `JudgeCascadeTests` with Jev and OpenAI both configured first", AppendJudgeSection);
+            "run `StationEvals` with `DECISION_MODEL_URL` set first", AppendStationSection);
+        AppendSection<JudgeVerdict>(sb, dir, "judge.jsonl", "DecisionModelJudge accept/escalate cascade (research.md §10.6a)",
+            "run `JudgeCascadeTests` with DecisionModel and OpenAI both configured first", AppendJudgeSection);
 
         Directory.CreateDirectory(dir);
         var reportPath = Path.Combine(dir, "report.md");
@@ -80,7 +80,7 @@ public class Report
         var mismatches = rows.Where(r => !r.PassG1).ToList();
         if (mismatches.Count > 0)
         {
-            sb.AppendLine().AppendLine("R-G1 mismatches (raw Jev answers, for the growth loop - §10.8):").AppendLine();
+            sb.AppendLine().AppendLine("R-G1 mismatches (raw DecisionModel answers, for the growth loop - §10.8):").AppendLine();
             AppendTable(sb, ["Case", "Turn", "Expected", "Actual", "intent.choice", "intent.confidence", "on_menu.noul"],
                 mismatches.Select(r => new[]
                 {
@@ -114,13 +114,13 @@ public class Report
 
     private static void AppendJudgeSection(StringBuilder sb, List<JudgeVerdict> rows)
     {
-        sb.AppendLine("## JevJudge accept/escalate cascade (research.md §10.6a)");
+        sb.AppendLine("## DecisionModelJudge accept/escalate cascade (research.md §10.6a)");
         sb.AppendLine();
-        AppendTable(sb, ["Rubric", "Accepted (Jev)", "Escalated (LLM)", "Human review", "Pass rate"],
+        AppendTable(sb, ["Rubric", "Accepted (DecisionModel)", "Escalated (LLM)", "Human review", "Pass rate"],
             rows.GroupBy(r => r.RubricId).OrderBy(g => g.Key).Select(g => new[]
             {
                 g.Key,
-                g.Count(r => r.Source == VerdictSource.Jev).ToString(),
+                g.Count(r => r.Source == VerdictSource.DecisionModel).ToString(),
                 g.Count(r => r.Source == VerdictSource.EscalatedLlm).ToString(),
                 g.Count(r => r.Source == VerdictSource.HumanReview).ToString(),
                 Pct(g.Count(r => r.Pass == true), g.Count(r => r.Pass.HasValue)),

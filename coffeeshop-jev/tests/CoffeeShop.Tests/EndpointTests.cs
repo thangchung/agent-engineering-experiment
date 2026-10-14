@@ -7,14 +7,14 @@ using CounterService.Common;
 using CounterService.Domain;
 using CounterService.Features.Orders;
 using CounterService.Features.Orders.Agents;
-using Jev.Client;
+using DecisionModel.Client;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CoffeeShop.Tests;
 
 /// <summary>tasks.md T15: the HTTP endpoints, end to end through a real Kestrel test server,
-/// with Jev and the 3 agents faked (no network).</summary>
+/// with DecisionModel and the 3 agents faked (no network).</summary>
 public class EndpointTests : IDisposable
 {
     private readonly WebApplicationFactory<Program> _factory;
@@ -22,16 +22,16 @@ public class EndpointTests : IDisposable
 
     public EndpointTests()
     {
-        var jevHandler = new ScriptedJevHandler([("place_order", 0.9, 0.95)]);
+        var decisionModelHandler = new ScriptedDecisionModelHandler([("place_order", 0.9, 0.95)]);
         var counterFake = FakeChatClient.Returning("""{"lines":[{"name":"LATTE","qty":1}]}""");
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
-                services.AddSingleton(new JevClient(
-                    new HttpClient(jevHandler) { BaseAddress = new Uri("http://openjev.local/") },
-                    new JevOptions()));
+                services.AddSingleton(new DecisionModelClient(
+                    new HttpClient(decisionModelHandler) { BaseAddress = new Uri("http://openjev.local/") },
+                    new DecisionModelOptions()));
 
                 services.AddSingleton<ICatalogClient>(new FakeCatalogClient([
                     new MenuItem("LATTE", "Latte", 4.50m, Station.Barista),
@@ -153,16 +153,16 @@ public class EndpointTests : IDisposable
     private static WebApplicationFactory<Program> BuildFactory(
         IEnumerable<(string IntentChoice, double IntentConfidence, double OnMenuNoul)> gateScript)
     {
-        var jevHandler = new ScriptedJevHandler(gateScript);
+        var decisionModelHandler = new ScriptedDecisionModelHandler(gateScript);
         var counterFake = FakeChatClient.Returning("""{"lines":[{"name":"LATTE","qty":1}]}""");
 
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
-                services.AddSingleton(new JevClient(
-                    new HttpClient(jevHandler) { BaseAddress = new Uri("http://openjev.local/") },
-                    new JevOptions()));
+                services.AddSingleton(new DecisionModelClient(
+                    new HttpClient(decisionModelHandler) { BaseAddress = new Uri("http://openjev.local/") },
+                    new DecisionModelOptions()));
 
                 services.AddSingleton<ICatalogClient>(new FakeCatalogClient([
                     new MenuItem("LATTE", "Latte", 4.50m, Station.Barista),
@@ -203,6 +203,40 @@ public class EndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var orders = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(orders.GetArrayLength() >= 1);
+    }
+
+    [Fact]
+    public async Task ListOrders_WithCustomerId_ReturnsOnlyThatCustomersOrdersNewestFirst()
+    {
+        var store = _factory.Services.GetRequiredService<CounterService.Features.Orders.Common.OrderStore>();
+        var done = OrderResult.Rejected(RejectReason.OffTopic, "no");
+        store.Add(done, "alice");
+        store.Add(done, "bob");
+        store.Add(done, "alice");
+
+        var orders = await _client.GetFromJsonAsync<JsonElement>("/orders?customerId=alice");
+
+        Assert.Equal(2, orders.GetArrayLength());
+        Assert.All(orders.EnumerateArray(), o => Assert.Equal("alice", o.GetProperty("customerId").GetString()));
+        Assert.True(orders[0].GetProperty("number").GetInt32() > orders[1].GetProperty("number").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetOrder_ReturnsTheRecordWithItsTrace_Or404()
+    {
+        var store = _factory.Services.GetRequiredService<CounterService.Features.Orders.Common.OrderStore>();
+        var trace = new CounterService.Features.Orders.Common.OrderTrace(
+            ["a latte"], "typesafe", "jev-latest",
+            [new(DateTimeOffset.UtcNow, "gate", "Accepted")], [new(DateTimeOffset.UtcNow, "RUN_STARTED", "x")]);
+        var number = store.Add(OrderResult.Rejected(RejectReason.OffTopic, "no"), "alice", trace).Number;
+
+        var order = await _client.GetFromJsonAsync<JsonElement>($"/orders/{number}");
+
+        Assert.Equal("alice", order.GetProperty("customerId").GetString());
+        Assert.Equal("gate", order.GetProperty("trace").GetProperty("audit")[0].GetProperty("kind").GetString());
+        Assert.Equal("RUN_STARTED", order.GetProperty("trace").GetProperty("agUi")[0].GetProperty("kind").GetString());
+        using var missing = await _client.GetAsync("/orders/99999");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 
     private static string ExtractRunId(string sseBody)

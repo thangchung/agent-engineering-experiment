@@ -11,6 +11,18 @@
     <PackageVersion Include="Microsoft.Agents.AI" Version="1.22.0" />
     <PackageVersion Include="Microsoft.Agents.AI.Workflows" Version="1.22.0" />
 
+    <!-- Microsoft Entra ID for the microsoft decision-model provider -->
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+
+    <!-- AG-UI (research.md §17.6): hosting preview pairs with MAF 1.22; wire SDK is stable -->
+    <PackageVersion Include="Microsoft.Agents.AI.Hosting.AGUI.AspNetCore" Version="1.22.0-preview.260918.1" />
+    <PackageVersion Include="AGUI.Server" Version="1.0.0" />
+    <PackageVersion Include="AGUI.Client" Version="1.0.0" />
+
+    <!-- WebApp (net11 only, preview) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.AI" Version="0.1.0-preview.1.26459.102" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="11.0.0-rc.1.26425.128" />
+
     <!-- Microsoft.Extensions.AI -->
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.0" />

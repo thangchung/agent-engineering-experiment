@@ -1,0 +1,105 @@
+@inject OrderSession Session
+@implements IDisposable
+
+<div class="rail-bar" aria-hidden="true"><span class="clip"></span></div>
+<article class="ticket" data-testid="order-ticket">
+    <h2 class="ticket-h">@(S.OrderNumber is { } n ? $"Order #{n}" : "Current order")</h2>
+    @if (Idle)
+    {
+        <p class="ticket-empty">Nothing on the rail yet. Your order prints here as the counter works on it.</p>
+    }
+    else
+    {
+        <ol class="steps" data-testid="ticket-steps">
+            @foreach (var (name, cls, detail) in Steps())
+            {
+                <li class="@cls"><span class="step-name">@name</span><span class="step-detail">@detail</span></li>
+            }
+        </ol>
+    }
+    @if (S.Lines.Count > 0)
+    {
+        <div class="ticket-lines" data-testid="ticket-lines">
+            @foreach (var station in new[] { "Barista", "Kitchen" })
+            {
+                var mine = S.Lines.Where(l => l.Station == station).ToList();
+                var ticket = S.Tickets.FirstOrDefault(t => t.Station == station);
+                <section class="station @station.ToLowerInvariant()">
+                    <h3>@station</h3>
+                    @if (mine.Count == 0)
+                    {
+                        <div class="line"><small>Nothing for the @station.ToLowerInvariant() on this order</small></div>
+                    }
+                    @foreach (var l in mine)
+                    {
+                        var item = ticket is { IsFallback: false } ? ticket.Items.FirstOrDefault(i => string.Equals(i.Name, l.Name, StringComparison.OrdinalIgnoreCase)) : null;
+                        <div class="line">
+                            <span>
+                                @l.Qty × @Session.Display(l.Name)
+                                @if (l.Flag is "Confirm" or "Review") {<span class="flag @l.Flag.ToLowerInvariant()">@l.Flag</span>}
+                                @if (item?.Steps is { Count: > 0 }) {<small>@string.Join(", ", item.Steps)@(item.Minutes is { } m ? $" ({m} min)" : "")</small>}
+                            </span>
+                            <span>@Money.Format(l.Price * l.Qty)</span>
+                        </div>
+                    }
+                </section>
+            }
+            @if (S.Status == "Completed")
+            {
+                <div class="total"><span>Total</span><span>@Money.Format(S.Total)</span></div>
+            }
+            @if (S.Lines.Any(l => l.Clamped))
+            {
+                <p class="note">One quantity was reduced to the maximum of 20.</p>
+            }
+        </div>
+    }
+</article>
+
+@code {
+    private IDisposable? _sub;
+    private UIAgent<OrderUiState>? _agent;
+
+    [Parameter, EditorRequired]
+    public UIAgent<OrderUiState> Agent { get; set; } = default!;
+
+    private OrderUiState S => Agent.State.Value;
+
+    private bool Idle => S is { Status: "Idle", Gate: null } && S.Lines.Count == 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(_agent, Agent))
+        {
+            _sub?.Dispose();
+            _agent = Agent;
+            _sub = Agent.State.OnChanged(() => _ = InvokeAsync(StateHasChanged));
+        }
+
+        await Session.GetMenuAsync();
+    }
+
+    private IEnumerable<(string Name, string Class, string Detail)> Steps()
+    {
+        var g = S.Gate;
+        var working = S.Status == "Working";
+        var terminalFail = S.Status == "Rejected";
+        var asking = S.Status == "Asking";
+        var split = S.Lines.Any(l => l.Station is not null);
+        var made = S.Tickets.Count > 0;
+
+        yield return ("Understand your message",
+            g is null ? (terminalFail ? "fail" : "active") : g.Decision == "Rejected" ? "fail" : asking ? "active" : "done",
+            g is null ? (terminalFail ? "Ordering was offline" : "") : $"Decision model: {g.Intent} {g.Confidence:0.00}, on menu {g.OnMenu:0.00}" + (asking ? $". Needs one detail. Asked you ({S.Asks} of 2)" : ""));
+
+        var accepted = g?.Decision == "Accepted";
+        var dead = asking || terminalFail || (g is not null && !accepted);
+        yield return ("Write up the order", dead ? "skip" : split ? "done" : accepted && working ? "active" : "", split ? $"{S.Lines.Count} line{(S.Lines.Count > 1 ? "s" : "")}, names checked against the menu" : "");
+        var flagged = S.Lines.Count(l => l.Flag != "None");
+        yield return ("Send to the stations", dead ? "skip" : split ? "done" : "", split ? (flagged > 0 ? $"Decision model picked a station per line, {flagged} flagged for staff to confirm" : "Decision model picked a station per line") : "");
+        yield return ("Make it", dead ? "skip" : made ? "done" : split && working ? "active" : "", made ? string.Join(", ", S.Tickets.Where(t => t.Items.Count > 0).Select(t => $"{t.Station} {t.Items.Sum(i => i.Minutes ?? 0)} min")) : split && working ? "Barista and kitchen working in parallel" : "");
+        yield return ("Hand it over", dead ? "skip" : S.Status == "Completed" ? "done" : made && working ? "active" : "", S.OrderNumber is { } n ? $"Order #{n}" : "");
+    }
+
+    public void Dispose() => _sub?.Dispose();
+}

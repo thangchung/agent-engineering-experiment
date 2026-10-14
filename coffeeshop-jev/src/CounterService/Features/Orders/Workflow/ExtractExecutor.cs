@@ -8,7 +8,7 @@ namespace CounterService.Features.Orders.Workflow;
 
 /// <summary>
 /// The Extract step (research.md §5.2): turns the conversation into catalog-validated order
-/// lines. Jev cannot extract (research.md §0/§11.1 rule 6), so this is the one genuinely
+/// lines. DecisionModel cannot extract (research.md §0/§11.1 rule 6), so this is the one genuinely
 /// generative step - and its output is never trusted blindly: unknown names are dropped,
 /// quantities are clamped, and price always comes from the catalog (research.md §7).
 /// </summary>

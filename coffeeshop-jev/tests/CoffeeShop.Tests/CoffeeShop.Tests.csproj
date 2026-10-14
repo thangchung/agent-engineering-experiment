@@ -13,6 +13,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="AGUI.Client" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,7 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ServiceDefaults\ServiceDefaults.csproj" />
-    <ProjectReference Include="..\..\src\Jev.Client\Jev.Client.csproj" />
+    <ProjectReference Include="..\..\src\DecisionModel.Client\DecisionModel.Client.csproj" />
     <ProjectReference Include="..\..\src\ProductCatalogService\ProductCatalogService.csproj">
       <!-- Both CounterService and ProductCatalogService generate a top-level-statements
            "Program" class; alias this one so EndpointTests can reference CounterService's

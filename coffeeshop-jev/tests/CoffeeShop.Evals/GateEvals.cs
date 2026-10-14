@@ -3,7 +3,7 @@ using CounterService.Features.Orders.Workflow;
 
 namespace CoffeeShop.Evals;
 
-/// <summary>One turn's real Jev gate call and the decision it produced (research.md T31, L1).</summary>
+/// <summary>One turn's real DecisionModel gate call and the decision it produced (research.md T31, L1).</summary>
 public sealed record GateEvalRow(
     string CaseId,
     int Turn,
@@ -19,7 +19,7 @@ public sealed record GateEvalRow(
     bool PassG2);
 
 /// <summary>
-/// tasks.md T31: for every golden turn, call Jev through the exact same
+/// tasks.md T31: for every golden turn, call DecisionModel through the exact same
 /// <see cref="GateQuestions.Build"/> the real <see cref="GateExecutor"/> uses, run the real
 /// <see cref="IntentPolicy.Decide"/>, and check R-G1/R-G2/R-G3 (research.md §10.5). This is a
 /// real accuracy measurement against the live OpenJev server, not a canned-answer unit test -
@@ -33,8 +33,8 @@ public class GateEvals
     [Fact]
     public async Task RunGoldenGateCases_WritesReportAndEnforcesSafetyGate()
     {
-        EvalConfig.RequireOpenJev();
-        var jev = EvalClients.Jev();
+        EvalConfig.RequireDecisionModel();
+        var decisionModel = EvalClients.DecisionModel();
         var cases = Golden.Load();
         var rows = new List<GateEvalRow>();
 
@@ -46,8 +46,8 @@ public class GateEvals
             for (var turn = 0; turn < goldenCase.Turns.Count; turn++)
             {
                 var latest = goldenCase.Turns[turn];
-                var response = await jev.AskAsync(
-                    new { history, latest },
+                var response = await decisionModel.AskAsync(
+                    GateQuestions.State(history, latest),
                     GateQuestions.Build(history, latest, EvalMenu.Items));
 
                 var intent = response.Answers[GateQuestions.QIntent];

@@ -1,0 +1,15 @@
+<div class="card card-menu" data-testid="menu-card">
+    <p class="card-h">Here's the board</p>
+    <ul class="mini-menu">
+        @foreach (var m in Items)
+        {
+            <li><span>@m.Name</span><span>@Money.Format(m.Price)</span></li>
+        }
+    </ul>
+    <a class="card-link" href="menu">Open the full menu</a>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<MenuEntry> Items { get; set; } = [];
+}

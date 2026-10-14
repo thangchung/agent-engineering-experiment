@@ -1,0 +1,92 @@
+@page "/menu"
+@inject OrderSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Menu · The Counter</PageTitle>
+
+<section class="view-menu" aria-labelledby="menu-h">
+    <div class="board">
+        <h1 id="menu-h" class="board-h">Today's board</h1>
+        @if (_items is null)
+        {
+            <p class="sub">@(_failed ? "The menu is unavailable right now. Please try again in a moment." : "Loading the board…")</p>
+        }
+        else
+        {
+            <div class="board-cols" data-testid="menu-board">
+                @foreach (var (station, title, sub) in Columns)
+                {
+                    <div class="board-col">
+                        <h2>@title</h2>
+                        <p class="sub">@sub</p>
+                        <ul class="items">
+                            @foreach (var m in _items.Where(i => i.Station == station))
+                            {
+                                var q = Session.Cart.GetValueOrDefault(m.Id);
+                                <li class="item @(q > 0 ? "in-cart" : "")" data-testid="menu-item-@m.Id">
+                                    <span class="item-name">@m.DisplayName</span><span class="item-price">@Money.Format(m.PriceUsd)</span>
+                                    <div class="stepper">
+                                        <button type="button" aria-label="Remove one @m.DisplayName" disabled="@(q == 0)" data-testid="minus-@m.Id" @onclick="() => Add(m.Id, -1)">−</button>
+                                        <output aria-live="polite" data-testid="qty-@m.Id">@q</output>
+                                        <button type="button" aria-label="Add one @m.DisplayName" data-testid="plus-@m.Id" @onclick="() => Add(m.Id, 1)">+</button>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (Count > 0)
+    {
+        <div class="cartbar" data-testid="cartbar">
+            <p>@Count item@(Count == 1 ? "" : "s") in your order, @Money.Format(Total)</p>
+            <div class="cart-actions">
+                <button type="button" class="btn ghost" @onclick="Session.ClearCart">Clear</button>
+                <button type="button" class="btn primary" data-testid="cart-place" @onclick="PlaceAsync">Place order</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly (string Station, string Title, string Sub)[] Columns =
+    [
+        ("Barista", "From the bar", "Made by the barista"),
+        ("Kitchen", "From the kitchen", "Made in the kitchen"),
+    ];
+
+    private List<CatalogItem>? _items;
+    private bool _failed;
+
+    [CascadingParameter]
+    public AgentContext Ctx { get; set; } = default!;
+
+    private int Count => Session.Cart.Values.Sum();
+
+    private decimal Total => _items?.Sum(i => i.PriceUsd * Session.Cart.GetValueOrDefault(i.Id)) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _items = [.. (await Session.GetMenuAsync()).Values];
+        }
+        catch (HttpRequestException)
+        {
+            _failed = true;
+        }
+    }
+
+    private void Add(string id, int delta) => Session.AddToCart(id, delta);
+
+    private async Task PlaceAsync()
+    {
+        var text = string.Join(", ", Session.Cart.Where(c => c.Value > 0).Select(c => $"{c.Value} × {Session.Display(c.Key)}"));
+        Session.ClearCart();
+        Nav.NavigateTo("");
+        await Ctx.SendMessageAsync(text);
+    }
+}

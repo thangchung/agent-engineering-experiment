@@ -9,7 +9,7 @@ namespace CoffeeShop.Evals;
 /// <summary>
 /// tasks.md T36 (just enough to feed real judge items - the deterministic R-E/R-C/R-T/R-D
 /// checks are out of this pass's scope) + T37: real agent responses, judged by the real
-/// <see cref="JevJudge"/> accept/escalate cascade (research.md §10.6a), against real Jev and a
+/// <see cref="DecisionModelJudge"/> accept/escalate cascade (research.md §10.6a), against real DecisionModel and a
 /// real escalation LLM. Every response here comes from the exact same `Prompts.cs` builders and
 /// agent factories the app itself uses (research.md §10.4: "an eval of a copied prompt proves
 /// nothing about the real one").
@@ -24,11 +24,11 @@ public class JudgeCascadeTests
     [Fact]
     public async Task Cascade_OverRealAgentResponses_ProducesVerdictsPerRubricItem()
     {
-        EvalConfig.RequireOpenJev();
+        EvalConfig.RequireDecisionModel();
         EvalConfig.RequireOpenAi();
         var counter = EvalClients.CounterAgent();
         var barista = EvalClients.BaristaAgent();
-        var judge = new JevJudge(EvalClients.Jev(), EvalClients.ChatClient());
+        var judge = new DecisionModelJudge(EvalClients.DecisionModel(), EvalClients.ChatClient());
 
         var latte = new OrderLine { Name = "LATTE", Qty = 1, Price = 4.50m };
 
@@ -59,7 +59,7 @@ public class JudgeCascadeTests
 
         EvalOutput.WriteJsonl("judge.jsonl", verdicts, Json);
 
-        // Every rubric item must reach a verdict at some tier - Jev, the escalated LLM, or an
+        // Every rubric item must reach a verdict at some tier - DecisionModel, the escalated LLM, or an
         // explicit HumanReview flag. It must never come back as a silent null with no source.
         Assert.All(verdicts, v => Assert.True(v.Pass.HasValue || v.Source == VerdictSource.HumanReview));
     }

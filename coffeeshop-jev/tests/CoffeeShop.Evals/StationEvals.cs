@@ -4,7 +4,7 @@ using CounterService.Features.Orders.Workflow;
 
 namespace CoffeeShop.Evals;
 
-/// <summary>One line's real Jev split call and the station it resolved to (research.md T32, L1).</summary>
+/// <summary>One line's real DecisionModel split call and the station it resolved to (research.md T32, L1).</summary>
 public sealed record StationEvalRow(
     string LineName,
     string GoldenStation,
@@ -17,7 +17,7 @@ public sealed record StationEvalRow(
 
 /// <summary>
 /// tasks.md T32: the 11 ids + 11 display names (22 lines total, research.md §10.3 "station
-/// set"), all in the one Jev call <see cref="StationExecutor"/> would make, checked against
+/// set"), all in the one DecisionModel call <see cref="StationExecutor"/> would make, checked against
 /// R-S1/R-S2/R-S3 (research.md §10.5). R-S2 is the one that matters most for this whole
 /// project's confidence-routing premise (§4.2): a "confident but wrong" split would mean the
 /// Confirm/Review bands are lying to the staff who trust them.
@@ -29,8 +29,8 @@ public class StationEvals
     [Fact]
     public async Task RunGoldenStationLines_WritesReportAndEnforcesCalibrationGate()
     {
-        EvalConfig.RequireOpenJev();
-        var jev = EvalClients.Jev();
+        EvalConfig.RequireDecisionModel();
+        var decisionModel = EvalClients.DecisionModel();
 
         var lines = EvalMenu.Items
             .Select(m => (Name: m.Id, Station: m.Station))
@@ -39,7 +39,7 @@ public class StationEvals
             .ToList();
 
         var orderLines = lines.Select(l => l.OrderLine).ToList();
-        var response = await jev.AskAsync(orderLines, StationQuestions.Build(orderLines));
+        var response = await decisionModel.AskAsync(orderLines, StationQuestions.Build(orderLines));
 
         var rows = new List<StationEvalRow>();
         for (var i = 0; i < lines.Count; i++)

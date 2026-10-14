@@ -1,0 +1,136 @@
+@page "/orders/{Number:int}"
+@using System.Text.Json
+@inject OrderSession Session
+
+<PageTitle>Order #@Number · The Counter</PageTitle>
+
+<section class="view-detail" aria-labelledby="detail-h">
+    <p><a class="card-link" href="orders" data-testid="back-to-orders">← Your orders</a></p>
+
+    @if (_loading)
+    {
+        <p class="empty">Loading…</p>
+    }
+    else if (_failed)
+    {
+        <p class="empty">Order details are unavailable right now.</p>
+    }
+    else if (_order is null)
+    {
+        <p class="empty" data-testid="detail-missing">There is no order #@Number. It may be from before the last restart.</p>
+    }
+    else
+    {
+        var o = _order;
+        var ok = o.Result.Status == "Completed";
+        <div class="orders-head">
+            <h1 id="detail-h">Order #@o.Number</h1>
+            <span class="status @o.Result.Status" data-testid="detail-status">@(ok ? "Completed" : "Not placed")</span>
+        </div>
+        <p class="slip-time" data-testid="detail-meta">
+            @o.CreatedAt.LocalDateTime.ToString("ddd d MMM HH:mm:ss") · customer @(o.CustomerId ?? "walk-in")
+            @if (o.Trace is { } meta) {<text> · decision model @meta.Provider / @meta.Model</text>}
+        </p>
+
+        <div class="detail-grid">
+            <article class="slip detail-slip" data-testid="detail-receipt">
+                <div class="slip-lines">
+                    @if (o.Result.Lines.Count > 0)
+                    {
+                        @foreach (var l in o.Result.Lines)
+                        {
+                            <div class="line"><span>@l.Qty × @Session.Display(l.Name)@if (l.Flag is "Confirm" or "Review") {<span class="flag @l.Flag.ToLowerInvariant()">@l.Flag</span>}</span><span>@Money.Format(l.Price * l.Qty)</span></div>
+                        }
+                        <div class="total"><span>Total</span><span>@Money.Format(o.Result.Total)</span></div>
+                    }
+                    else
+                    {
+                        <div class="line"><small>No items</small></div>
+                    }
+                </div>
+                @foreach (var t in o.Result.Tickets.Where(t => t.Items.Count > 0))
+                {
+                    <section class="station @t.Station.ToLowerInvariant()">
+                        <h3>@t.Station@(t.IsFallback ? " (fallback ticket)" : "")</h3>
+                        @foreach (var i in t.Items)
+                        {
+                            <div class="line"><span>@i.Qty × @Session.Display(i.Name)@if (i.Steps is { Count: > 0 }) {<small>@string.Join(", ", i.Steps)@(i.Minutes is { } m ? $" ({m} min)" : "")</small>}</span></div>
+                        }
+                    </section>
+                }
+                <p class="note">@o.Result.Message</p>
+                @if (o.Result.Reason is { } reason) {<p class="note">Reason: @reason</p>}
+                @if (o.Trace is { Conversation.Count: > 0 } conv)
+                {
+                    <h3 class="detail-h">Conversation</h3>
+                    <ol class="convo" data-testid="detail-conversation">
+                        @foreach (var m in conv.Conversation) {<li>@m</li>}
+                    </ol>
+                }
+            </article>
+
+            <div class="detail-logs">
+                @if (o.Trace is null)
+                {
+                    <p class="empty" data-testid="detail-no-trace">No audit log was recorded for this order (it was placed through the legacy endpoint).</p>
+                }
+                else
+                {
+                    var t0 = o.Trace.Audit.Concat(o.Trace.AgUi).Select(e => e.At).DefaultIfEmpty(o.CreatedAt).Min();
+                    <h2 class="detail-h">Audit log</h2>
+                    <ol class="log" data-testid="audit-log">
+                        @foreach (var e in o.Trace.Audit)
+                        {
+                            <li><span class="log-t">+@Offset(t0, e.At)</span><span class="log-k">@e.Kind</span><span class="log-d">@e.Detail</span></li>
+                        }
+                    </ol>
+                    <h2 class="detail-h">AG-UI events</h2>
+                    <ol class="log log-dark" data-testid="agui-log">
+                        @foreach (var e in o.Trace.AgUi)
+                        {
+                            <li><span class="log-t">+@Offset(t0, e.At)</span><span class="ev-type @(e.Kind == "RUN_ERROR" ? "err" : "")">@e.Kind</span><span class="log-d">@e.Detail</span></li>
+                        }
+                    </ol>
+                }
+                <details class="raw" data-testid="detail-raw">
+                    <summary>Raw record (JSON)</summary>
+                    <pre>@Pretty(_raw)</pre>
+                </details>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    private OrderRecordInfo? _order;
+    private string _raw = "";
+    private bool _loading = true;
+    private bool _failed;
+
+    [Parameter]
+    public int Number { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try
+        {
+            await Session.GetMenuAsync();
+            (_order, _raw) = await Session.GetOrderAsync(Number) is { } found ? (found.Order, found.Raw) : (null, "");
+            _failed = false;
+        }
+        catch (HttpRequestException)
+        {
+            _failed = true;
+        }
+
+        _loading = false;
+    }
+
+    private static string Offset(DateTimeOffset t0, DateTimeOffset at) => $"{(at - t0).TotalSeconds:0.000}s";
+
+    private static string Pretty(string raw) =>
+        raw.Length == 0 ? "" : JsonSerializer.Serialize(JsonSerializer.Deserialize<JsonElement>(raw), Indented);
+}

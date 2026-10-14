@@ -1,7 +1,8 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.5.4">
+<Project Sdk="Aspire.AppHost.Sdk/13.6.1">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
     <IsAspireHost>true</IsAspireHost>
     <AspireUseCliBundle>true</AspireUseCliBundle>
     <UserSecretsId>351623b9-4467-4592-82cf-46a33cd69d60</UserSecretsId>
@@ -10,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ProductCatalogService\ProductCatalogService.csproj" />
     <ProjectReference Include="..\CounterService\CounterService.csproj" />
+    <ProjectReference Include="..\..\WebApp\WebApp.csproj" />
   </ItemGroup>
 
 </Project>

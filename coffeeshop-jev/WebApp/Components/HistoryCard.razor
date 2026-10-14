@@ -1,0 +1,16 @@
+@inject OrderSession Session
+
+<div class="card" data-testid="history-card">
+    <ul class="mini-history">
+        @foreach (var o in Orders.Take(4))
+        {
+            <li><span>#@o.Number @Money.Summary(o.Result.Lines, Session.Display)</span><span>@Money.Format(o.Result.Total)</span></li>
+        }
+    </ul>
+    <a class="card-link" href="orders">See all your orders</a>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<OrderRecordInfo> Orders { get; set; } = [];
+}

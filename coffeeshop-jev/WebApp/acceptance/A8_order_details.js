@@ -1,0 +1,31 @@
+async (page) => {
+  await fresh(page);
+  await say(page, "what's the weather today?");
+  await say(page, '2 lattes and a croissant');
+  await page.getByTestId('nav-orders').click();
+  await page.waitForSelector('[data-testid=history-row]');
+  ok(await page.getByTestId('order-details-link').count() === 2, 'every card links to its details');
+  await page.getByTestId('order-link').first().click();
+  await page.getByTestId('detail-status').filter({ hasText: 'Completed' }).waitFor();
+  const receipt = await page.getByTestId('detail-receipt').innerText();
+  ok(receipt.includes('$12.25') && receipt.includes('2 × Latte'), 'receipt on the details page: ' + receipt);
+  const audit = await page.getByTestId('audit-log').innerText();
+  for (const k of ['message', 'provider', 'gate', 'split', 'ticket', 'result']) ok(audit.includes(k), 'audit log has ' + k + ': ' + audit);
+  const agui = await page.getByTestId('agui-log').innerText();
+  for (const k of ['RUN_STARTED', 'STATE_SNAPSHOT', 'TEXT_MESSAGE_CONTENT', 'RUN_FINISHED']) ok(agui.includes(k), 'AG-UI log has ' + k);
+  ok((await page.getByTestId('detail-conversation').innerText()).includes('2 lattes and a croissant'), 'conversation shown');
+  ok((await page.getByTestId('detail-meta').innerText()).includes('decision model'), 'provider/model shown');
+  await page.getByTestId('detail-raw').locator('summary').click();
+  ok((await page.getByTestId('detail-raw').innerText()).includes('"trace"'), 'raw JSON available');
+  await page.setViewportSize({ width: 390, height: 844 });
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal scroll at 390px');
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByTestId('back-to-orders').click();
+  await page.waitForSelector('[data-testid=history-row]');
+  await page.getByTestId('order-link').last().click();
+  await page.getByTestId('detail-status').filter({ hasText: 'Not placed' }).waitFor();
+  ok((await page.getByTestId('audit-log').innerText()).includes('OffTopic'), 'rejected order keeps its audit trail');
+  await page.goto(URL + '/orders/99999');
+  await page.getByTestId('detail-missing').waitFor();
+  return 'A8 ok';
+}

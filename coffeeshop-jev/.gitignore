@@ -6,3 +6,4 @@ obj/
 .playwright-cli/
 
 appsettings.Development.json
+graphify-out

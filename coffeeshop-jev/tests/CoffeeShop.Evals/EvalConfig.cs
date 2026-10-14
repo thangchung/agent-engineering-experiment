@@ -15,28 +15,28 @@ public static class EvalConfig
 
     private static readonly IConfiguration Root = Build();
 
-    public static string? OpenJevUrl => Get("OPENJEV_URL", "Parameters:openjev-url");
+    public static string? DecisionModelUrl => Get("DECISION_MODEL_URL", "decision-model-url");
 
-    public static string? JevApiKey => Get("JEV_API_KEY", "jev-api-key");
+    public static string? DecisionModelApiKey => Get("DECISION_MODEL_API_KEY", "decision-model-api-key");
 
-    public static string? OpenAiBaseUrl => Get("OPENAI_BASE_URL", "Parameters:openai-base-url");
+    public static string? OpenAiBaseUrl => Get("OPENAI_BASE_URL", "openai-base-url");
 
     public static string? OpenAiApiKey => Get("OPENAI_API_KEY", "openai-api-key");
 
-    public static string? OpenAiModel => Get("OPENAI_MODEL", "Parameters:openai-model");
+    public static string? OpenAiModel => Get("OPENAI_MODEL", "openai-model");
 
     /// <summary>Fails fast, by design (2026-09-24 decision): a live eval test run with no
-    /// OpenJev configured is a setup mistake, not a normal offline run - throwing here, instead
+    /// decision model configured is a setup mistake, not a normal offline run - throwing here, instead
     /// of skipping, tells the human exactly what to set instead of leaving a silent "Skipped"
     /// they might not notice.</summary>
-    public static void RequireOpenJev() => Require(
-        OpenJevUrl,
-        "OpenJev is not configured (OpenJevUrl is null/empty). Set env var OPENJEV_URL, or run:\n" +
-        "  cd src/AppHost && dotnet user-secrets set \"openjev-url\" \"http://<host>:<port>\"\n" +
+    public static void RequireDecisionModel() => Require(
+        DecisionModelUrl,
+        "The decision model is not configured (DecisionModelUrl is null/empty). Set env var DECISION_MODEL_URL, or run:\n" +
+        "  cd src/AppHost && dotnet user-secrets set \"decision-model-url\" \"http://<host>:<port>\"\n" +
         "See README.md.");
 
-    /// <summary>Same fail-fast policy as <see cref="RequireOpenJev"/>, for the OpenAI-compatible
-    /// chat endpoint the 3 agents and the JevJudge escalation tier use.</summary>
+    /// <summary>Same fail-fast policy as <see cref="RequireDecisionModel"/>, for the OpenAI-compatible
+    /// chat endpoint the 3 agents and the DecisionModelJudge escalation tier use.</summary>
     public static void RequireOpenAi()
     {
         var missing = new List<string>();
@@ -67,7 +67,7 @@ public static class EvalConfig
     }
 
     /// <summary>The fail-fast primitive both Require* methods use - pure and testable on its
-    /// own (<see cref="SmokeTests"/>), unlike testing RequireOpenJev/RequireOpenAi directly,
+    /// own (<see cref="SmokeTests"/>), unlike testing RequireDecisionModel/RequireOpenAi directly,
     /// which would depend on whatever happens to be configured on the machine running the test.</summary>
     public static void Require(string? value, string errorMessage)
     {
@@ -77,8 +77,9 @@ public static class EvalConfig
         }
     }
 
-    private static string? Get(string envVar, string parameterKey) =>
-        Environment.GetEnvironmentVariable(envVar) is { Length: > 0 } fromEnv ? fromEnv : Root[parameterKey];
+    // AppHost reads "Parameters:{name}" (appsettings), `dotnet user-secrets set "{name}"` writes the bare name: accept both.
+    private static string? Get(string envVar, string name) =>
+        Environment.GetEnvironmentVariable(envVar) is { Length: > 0 } fromEnv ? fromEnv : Root[$"Parameters:{name}"] ?? Root[name];
 
     private static IConfiguration Build()
     {
